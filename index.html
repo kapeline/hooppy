@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Заливка в Хуппи</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Crect%20width%3D'64'%20height%3D'64'%20rx%3D'16'%20fill%3D'%235b4bdb'%2F%3E%3Cpath%20d%3D'M32%2043V21M22.5%2030.5L32%2021l9.5%209.5'%20fill%3D'none'%20stroke%3D'%23fff'%20stroke-width%3D'6'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%2F%3E%3Crect%20x%3D'17'%20y%3D'47'%20width%3D'30'%20height%3D'5'%20rx%3D'2.5'%20fill%3D'%23fff'%2F%3E%3C%2Fsvg%3E">
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--muted:#6b6b72;--line:#e3e1db;--accent:#5b4bdb;--accent-ink:#fff;--ok:#1a8a4a;--err:#c93434;--warn:#b7791f}
 @media (prefers-color-scheme:dark){:root{--bg:#141417;--card:#1d1d22;--ink:#f1f1f3;--muted:#9a9aa5;--line:#2e2e36;--accent:#8b7dff;--accent-ink:#101014;--ok:#4cc783;--err:#ff7070;--warn:#e0b252}}
@@ -39,6 +40,9 @@ th{color:var(--muted);font-weight:500;font-size:12px}
 .hidden{display:none}
 .msg{padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:14px;margin-top:10px;white-space:pre-wrap}
 .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.alarm{position:sticky;top:0;z-index:9;display:flex;gap:12px;align-items:center;justify-content:space-between;background:var(--err);color:#fff;padding:12px 14px;border-radius:12px;margin-bottom:12px;font-weight:600;animation:blink 1s step-end infinite}
+.alarm button{background:#fff;color:#000}
+@keyframes blink{50%{filter:brightness(1.35)}}
 </style>
 </head>
 <body>
@@ -46,7 +50,9 @@ th{color:var(--muted);font-weight:500;font-size:12px}
   <h1>Заливка в Хуппи</h1>
   <p class="sub">Кидаешь видео — они сами уходят в Хуппи с подписями по кругу и временем по правилам.</p>
 
-  <div class="tabs">
+  <div id="alarmBox" class="alarm hidden"><span id="alarmTxt"></span><button id="alarmStop">Выключить сигнал</button></div>
+
+<div class="tabs">
     <button id="tabUp" class="on">Загрузка</button>
     <button id="tabPr">Проекты</button>
     <button id="tabSet">Доступ</button>
@@ -64,6 +70,8 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <h2>2. Видео</h2>
       <div class="drop" id="drop">Перетащи видео сюда или нажми, чтобы выбрать<br><span class="hint">MP4 / MOV. Порядок — по названию файла (rls_01, rls_02…)</span></div>
       <input type="file" id="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple class="hidden">
+<label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" id="compress" checked> сжимать видео перед отправкой (H.264, CRF 20 — на глаз без потерь)</label>
+<div class="hint">Сжатие идёт прямо в браузере, по одному файлу. Файлы больше 400 МБ уходят как есть. Если сжатие не получилось или файл не стал меньше — уходит оригинал.</div>
     </div>
 
     <div class="card">
@@ -99,7 +107,13 @@ th{color:var(--muted);font-weight:500;font-size:12px}
         <tbody id="rows"></tbody>
       </table>
     </div>
-  </section>
+  <div class="card hidden" id="watchCard">
+<h2>Слежка за публикациями</h2>
+<div class="hint" style="margin:0 0 8px">Пока вкладка открыта, сайт проверяет каждый пост через 3, 10, 20, 30, 40, 50 и 60 минут после выхода. Ошибку нужно увидеть два раза подряд, потом он перевыкладывает пост на упавшую страницу с подписью и хештегами. Не получилось — сигнал.</div>
+<table><thead><tr><th>Видео</th><th>Вышло</th><th>Проверки</th><th>Статус</th></tr></thead><tbody id="watchRows"></tbody></table>
+<div class="row" style="margin-top:10px"><button id="watchClear" class="ghost small">Убрать завершённые</button></div>
+</div>
+</section>
 
   <!-- ПРОЕКТЫ -->
   <section id="viewPr" class="hidden">
@@ -123,6 +137,12 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <div class="hint">Токен хранится только в этом браузере и отправляется только на api.hooppy.ru. На самом сайте (в коде) его нет.</div>
       <div class="msg hidden" id="tokMsg"></div>
     </div>
+<div class="card">
+<h2>Сигнал о проблемах</h2>
+<div class="hint" style="margin:0 0 10px">Если видео совсем не выкладывается, сайт включит звук, замигает вкладкой и покажет уведомление. Нажми кнопку один раз, чтобы браузер разрешил звук и уведомления.</div>
+<div class="row"><button id="notifOn">Включить звук и уведомления</button><button id="notifTest" class="ghost">Проверить сигнал</button></div>
+<div class="msg hidden" id="notifMsg"></div>
+</div>
   </section>
 </main>
 
@@ -130,6 +150,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
 'use strict';
 const API='https://api.hooppy.ru/api';
 const $=s=>document.querySelector(s);
+let likeePages=[];
 const store={
   get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
@@ -215,6 +236,8 @@ function renderProjects(){
       <textarea data-k="captions">${esc(p.captions.join('\n'))}</textarea>
       <label>Окна времени на день</label><input type="text" data-k="windows" value="${esc(p.windows)}">
       <label class="row" style="margin-top:10px"><input type="checkbox" data-k="firstNow" ${p.firstNow?'checked':''}> первое видео по умолчанию — сразу</label>
+      <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="likeeOn" ${p.likeeOn?'checked':''}> дублировать в Лайк отдельным постом (только на страницу Лайка)</label>
+      ${p.likeeOn?`<label>Страница Лайка в Хуппи ${likeePages.length?'':'<span class="pill">страницы Лайка не найдены — подключи Лайк в Хуппи и обнови сайт</span>'}</label><select data-k="likeePageId"><option value="">— выбери страницу —</option>${likeePages.map(x=>`<option value="${x.id}" ${x.id===p.likeePageId?'selected':''}>${esc(x.name)}</option>`).join('')}</select><label>Окна времени для Лайка (пусто — то же время, что и у основного поста)</label><input type="text" data-k="likeeWindows" value="${esc(p.likeeWindows||'')}" placeholder="например 08:00-10:00, 19:00-22:00">`:''}
       <div class="row" style="margin-top:10px"><span class="hint grow">Следующая подпись по кругу: №${(p.nextCap%Math.max(1,p.captions.length))+1}</span>
       <button class="ghost small" data-act="reset">Сбросить круг</button>
       <button class="ghost small" data-act="del">Удалить проект</button></div>`;
@@ -223,6 +246,8 @@ function renderProjects(){
       if(k==='captions')p.captions=el.value.split('\n').map(s=>s.trim()).filter(Boolean);
       else if(k==='hooppyId')p.hooppyId=el.value?Number(el.value):null;
       else if(k==='firstNow')p.firstNow=el.checked;
+      else if(k==='likeeOn'){p.likeeOn=el.checked;saveProjects();renderProjects();return}
+      else if(k==='likeePageId')p.likeePageId=el.value?Number(el.value):null;
       else p[k]=el.value;
       saveProjects();
     });
@@ -356,19 +381,21 @@ function planOpts(){
 $('#btnPlan').onclick=()=>{
   const p=cur(),msg=$('#planMsg');msg.classList.remove('hidden');msg.className='msg';
   if(!p.captions.length){msg.textContent='У проекта нет подписей — добавь их на вкладке «Проекты».';return}
+  if(p.likeeOn&&!p.likeePageId){msg.textContent='Лайк включён в проекте, но страница Лайка не выбрана — выбери её на вкладке «Проекты».';return}
   const w=parseWindows($('#windows').value);
   if(!w.length){msg.textContent='Окна времени заданы неверно. Формат: 09:00-14:00, 15:00-21:00';return}
   p.windows=$('#windows').value;p.firstNow=$('#firstNow').checked;saveProjects();
   const todo=queue.filter(q=>q.state!=='ok');
   const times=makeTimes(todo.length,p.firstNow,w,planOpts());
+  const lw=parseWindows(p.likeeWindows||'');const ltimes=(p.likeeOn&&lw.length)?makeTimes(todo.length,false,lw,planOpts()):null;
   todo.forEach((q,i)=>{
-    q.when=times[i];
+    q.when=times[i];q.whenLikee=ltimes?ltimes[i]:null;
     q.caption=p.captions[(p.nextCap+i)%p.captions.length];
     q.state='wait';q.err=null;
   });
   planned=true;
   $('#btnGo').classList.remove('hidden');
-  $('#btnGo').disabled=!p.hooppyId||!token();
+  $('#btnGo').disabled=!p.hooppyId||!token()||(p.likeeOn&&!p.likeePageId);
   msg.textContent=!token()?'Сначала вставь токен на вкладке «Доступ».':!p.hooppyId?'Выбери набор страниц Хуппи для проекта (вкладка «Проекты»).':'Проверь расписание ниже. Если всё ок — «Отправить в Хуппи». Страницу не закрывай, пока идёт загрузка.';
   renderRows();
 };
@@ -377,10 +404,10 @@ function renderRows(){
   $('#listCard').classList.toggle('hidden',!queue.length);
   $('#rows').innerHTML=queue.map((q,i)=>{
     const when=q.when?(q.when.now?'<b>сразу</b>':esc(fmt(q.when.date))):'—';
-    const st={wait:['ожидает','st-wait'],run:['загрузка…','st-run'],ok:['готово ✓','st-ok'],err:['ошибка','st-err']}[q.state];
-    return `<tr><td>${i+1}</td><td>${esc(q.name)}<div class="cap">${(q.file.size/1048576).toFixed(1)} МБ</div></td><td>${when}</td>
+    const st={wait:['ожидает','st-wait'],run:['загрузка…','st-run'],zip:['сжатие…','st-run'],ok:['готово ✓','st-ok'],err:['ошибка','st-err']}[q.state];
+    return `<tr><td>${i+1}</td><td>${esc(q.name)}<div class="cap">${(q.file.size/1048576).toFixed(1)} МБ${q.zipInfo?' → '+q.zipInfo:''}</div></td><td>${when}${likeeWhenHtml(q)}</td>
       <td class="cap">${q.caption?esc(q.caption):'—'}</td>
-      <td class="${st[1]}">${st[0]}${q.state==='run'?`<div class="bar"><i style="width:${q.pct}%"></i></div>`:''}${q.err?`<div class="cap st-err">${esc(q.err)}</div>`:''}</td></tr>`;
+      <td class="${st[1]}">${st[0]}${(q.state==='run'||q.state==='zip')?`<div class="bar"><i style="width:${q.pct}%"></i></div>`:''}${q.err?`<div class="cap st-err">${esc(q.err)}</div>`:''}</td></tr>`;
   }).join('');
 }
 
@@ -431,8 +458,24 @@ $('#btnGo').onclick=async()=>{
   for(const q of todo){
     q.state='run';q.pct=0;q.err=null;renderRows();
     try{
-      const media=await uploadFile(q.file,pct=>{q.pct=pct;renderRows()});
-      await createPost(p,q,media);
+      let fileToSend=q.file;
+if($('#compress').checked){
+q.state='zip';q.pct=0;renderRows();
+fileToSend=await compressVideo(q,pct=>{q.pct=pct;renderRows()});
+q.state='run';q.pct=0;renderRows();
+}
+const media=await uploadFile(fileToSend,pct=>{q.pct=pct;renderRows()});
+const postRes=await createPost(p,q,media);
+try{const pg=await getSetPages(p);registerWatch(q.name,pg,postRes&&postRes.id,q.when,q.caption,media,0,p.name)}catch(e2){q.err='слежка не включена: '+e2.message}
+if(p.likeeOn&&p.likeePageId){
+const lwhen=q.whenLikee||q.when,lp={25:[p.likeePageId]};
+try{
+let lm=media,lres;
+try{lres=await createPostTo(lp,q.caption,lm,lwhen)}
+catch(e3){if(e3.status===401)throw e3;lm=await uploadFile(fileToSend,()=>{});lres=await createPostTo(lp,q.caption,lm,lwhen)}
+registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name);
+}catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
+}
       q.state='ok';done++;
       // подпись по кругу сдвигаем только после успешной отправки
       p.nextCap=(p.nextCap+1)%Math.max(1,p.captions.length);saveProjects();
@@ -451,11 +494,248 @@ $('#btnGo').onclick=async()=>{
 };
 function onProjInfoOnly(){const p=cur();const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
 
+/* ---------- Лайк ---------- */
+async function loadLikee(){
+  let all=[],page=1;
+  for(;;){
+    const j=await api('/accounts/pages?source_id=25&page='+page);
+    const l=j.list||[];
+    all=all.concat(l.map(x=>({id:x.id,name:x.social_page_name||('ID '+x.id)})));
+    if(l.length<20||page>10)break;page++;
+  }
+  likeePages=all;return all;
+}
+function likeeWhenHtml(q){
+  const p=cur();if(!p||!p.likeeOn)return '';
+  const w=q.whenLikee||q.when;if(!w)return '';
+  return '<div class="cap">Лайк: '+(w.now?'сразу':esc(fmt(w.date)))+'</div>';
+}
+const toHtml=t=>String(t).split(/\n+/).map(x=>x.trim()).filter(Boolean).map(x=>'<p>'+esc(x)+'</p>').join('');
+async function createPostTo(pages,caption,media,when){
+  const body={publication_how_type:1,selected_pages_by_source_ids:pages,
+    texts:[{text:toHtml(caption),source_id:0}],
+    attachments:[{type:'photos',data:[media]}]};
+  if(!when||when.now){body.publication_when_type=1}
+  else{
+    const d=when.date;
+    body.publication_when_type=2;
+    body.publication_date={date:pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear(),hours:pad(d.getHours()),minutes:pad(d.getMinutes())};
+  }
+  return api('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+}
+
+/* ---------- сжатие (ffmpeg.wasm, прямо в браузере) ---------- */
+let ff=null,ffLoading=null;
+async function loadFF(){
+  if(ff)return ff;
+  if(!ffLoading)ffLoading=(async()=>{
+    const base='https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
+    const core='https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    if(!window.FFmpegWASM)await new Promise((res,rej)=>{const sc=document.createElement('script');sc.src=base+'/ffmpeg.js';sc.onload=res;sc.onerror=()=>rej(new Error('не загрузился ffmpeg'));document.head.appendChild(sc)});
+    const blobURL=async(u,t)=>URL.createObjectURL(new Blob([await (await fetch(u)).arrayBuffer()],{type:t}));
+    const f=new FFmpegWASM.FFmpeg();
+    await f.load({
+      classWorkerURL:await blobURL(base+'/814.ffmpeg.js','text/javascript'),
+      coreURL:await blobURL(core+'/ffmpeg-core.js','text/javascript'),
+      wasmURL:await blobURL(core+'/ffmpeg-core.wasm','application/wasm')
+    });
+    ff=f;return f;
+  })();
+  try{return await ffLoading}catch(e){ffLoading=null;throw e}
+}
+async function compressVideo(q,onPct){
+  const file=q.file;
+  q.zipInfo=null;
+  if(file.size>400*1048576){q.zipInfo='не сжимал (больше 400 МБ)';return file}
+  const tag=Date.now().toString(36),inName='in_'+tag+(/\.mov$/i.test(file.name)?'.mov':'.mp4'),outName='out_'+tag+'.mp4';
+  let f=null,prog=null;
+  try{
+    f=await loadFF();
+    prog=ev=>{if(ev&&ev.progress>=0&&ev.progress<=1)onPct(Math.round(ev.progress*100))};
+    f.on('progress',prog);
+    await f.writeFile(inName,new Uint8Array(await file.arrayBuffer()));
+    const rc=await f.exec(['-i',inName,'-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-movflags','+faststart',outName]);
+    if(rc!==0)throw new Error('ffmpeg code '+rc);
+    const data=await f.readFile(outName);
+    if(data.length>=file.size*0.95){q.zipInfo='сжатие не помогло, ушёл оригинал';return file}
+    q.zipInfo=(data.length/1048576).toFixed(1)+' МБ';
+    return new File([data],file.name.replace(/\.\w+$/,'')+'.mp4',{type:'video/mp4'});
+  }catch(e){
+    console.warn('compress',e);
+    q.zipInfo='сжатие не удалось, ушёл оригинал';
+    return file;
+  }finally{
+    if(f){
+      if(prog)try{f.off('progress',prog)}catch(e){}
+      try{await f.deleteFile(inName)}catch(e){}
+      try{await f.deleteFile(outName)}catch(e){}
+    }
+  }
+}
+
+/* ---------- сигнал ---------- */
+const BASE_TITLE=document.title;
+let actx=null,beepT=null,flashT=null,alarms=[];
+function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume()}catch(e){}}
+document.addEventListener('click',unlockAudio);
+function beep(){
+  if(!actx)return;
+  [880,660].forEach((fr,i)=>{
+    const o=actx.createOscillator(),g=actx.createGain(),t0=actx.currentTime+i*0.28;
+    o.type='square';o.frequency.value=fr;g.gain.value=0.15;
+    o.connect(g);g.connect(actx.destination);o.start(t0);o.stop(t0+0.22);
+  });
+}
+function alarm(msg){
+  if(alarms.includes(msg))return;
+  alarms.push(msg);
+  $('#alarmTxt').textContent='Всё плохо: '+alarms.join(' • ');
+  $('#alarmBox').classList.remove('hidden');
+  if(!beepT){unlockAudio();beep();beepT=setInterval(beep,1500)}
+  if(!flashT){let on=false;flashT=setInterval(()=>{on=!on;document.title=on?'!!! НЕ ВЫКЛАДЫВАЕТСЯ !!!':BASE_TITLE},700)}
+  try{if(window.Notification&&Notification.permission==='granted')new Notification('Хуппи: не выкладывается',{body:msg,requireInteraction:true})}catch(e){}
+}
+function stopAlarm(){
+  clearInterval(beepT);clearInterval(flashT);beepT=flashT=null;alarms=[];
+  document.title=BASE_TITLE;$('#alarmBox').classList.add('hidden');
+}
+$('#alarmStop').onclick=stopAlarm;
+$('#notifOn').onclick=async()=>{
+  unlockAudio();beep();
+  const m=$('#notifMsg');m.classList.remove('hidden');
+  let r='недоступны в этом браузере';
+  try{if(window.Notification)r=await Notification.requestPermission()}catch(e){}
+  m.textContent='Звук включён. Уведомления: '+(r==='granted'?'разрешены':r==='denied'?'запрещены (разреши в настройках сайта в браузере)':r);
+};
+$('#notifTest').onclick=()=>{unlockAudio();alarm('Тест сигнала — если слышишь звук и вкладка мигает, всё работает')};
+
+/* ---------- слежка за публикациями ---------- */
+const WATCH_OFFS=[3,10,20,30,40,50,60]; // минут после выхода поста
+let watch=store.get('watch',[]);
+const saveWatch=()=>store.set('watch',watch);
+const setPagesCache={};
+async function getSetPages(p){
+  if(setPagesCache[p.hooppyId])return setPagesCache[p.hooppyId];
+  const j=await api('/posts/projects/'+p.hooppyId+'/edit');
+  const m=j.selected_pages_by_source_ids||{},r={};
+  for(const k of Object.keys(m)){const a=(m[k]||[]).map(Number).filter(Boolean);if(a.length)r[k]=a}
+  setPagesCache[p.hooppyId]=r;return r;
+}
+function registerWatch(label,pages,postId,when,caption,media,attempt,proj){
+  if(!postId||!pages||!Object.keys(pages).length)return;
+  watch.push({id:'w'+Date.now()+Math.random().toString(36).slice(2,6),postId,label,proj,pages,caption,media,attempt:attempt||0,
+    at:(when&&!when.now&&when.date)?when.date.getTime():Date.now(),k:0,fail:{},st:{},state:'watch',note:''});
+  saveWatch();renderWatch();
+}
+const html2txt=h=>new DOMParser().parseFromString(String(h||'').replace(/<\/p>\s*<p>/gi,'\n').replace(/<br\s*\/?>/gi,'\n'),'text/html').body.textContent.trim();
+const TAG_RE=/#[\p{L}\p{N}_]+/gu;
+async function recoverCaption(w){
+  let base=w.caption||'';
+  try{
+    const j=await api('/posts/'+w.postId+'/edit');
+    const okSids=Object.keys(w.st).filter(k=>w.st[k]==='ok').map(k=>k.split(':')[0]);
+    const texts=(j.texts||[]).map(t=>({sid:String(t.source_id),txt:html2txt(t.text)})).filter(t=>t.txt);
+    const pick=texts.find(t=>okSids.includes(t.sid))||texts.find(t=>t.sid==='0')||texts[0];
+    if(pick)base=pick.txt;
+    const tags=new Set();
+    texts.forEach(t=>(t.txt.match(TAG_RE)||[]).forEach(x=>tags.add(x)));
+    const have=base.match(TAG_RE)||[];
+    const extra=[...tags].filter(x=>!have.includes(x));
+    if(extra.length)base=base.trim()+'\n\n'+extra.join(' ');
+  }catch(e){}
+  return base;
+}
+async function repost(w,failing){
+  const pages={};
+  failing.forEach(k=>{const [sid,pid]=k.split(':');(pages[sid]=pages[sid]||[]).push(Number(pid))});
+  if(w.attempt>=2){
+    w.state='alarm';failing.forEach(k=>w.st[k]='dead');
+    alarm('«'+w.label+'»: не выкладывается, две перевыкладки не помогли');
+    return;
+  }
+  try{
+    const text=await recoverCaption(w);
+    const r=await createPostTo(pages,text,w.media,{now:true});
+    failing.forEach(k=>w.st[k]='retried');
+    w.note='перевыложено ('+(w.attempt+1)+')';
+    registerWatch(w.label.replace(/ \(повтор\)$/,'')+' (повтор)',pages,r&&r.id,{now:true},text,w.media,w.attempt+1,w.proj);
+  }catch(e){
+    if(e.status===401)throw e;
+    w.state='alarm';failing.forEach(k=>w.st[k]='dead');
+    alarm('«'+w.label+'»: не смог перевыложить ('+e.message+')');
+  }
+}
+async function checkWatch(w,final){
+  for(const sid of Object.keys(w.pages)){
+    let j;
+    try{j=await api('/items/social/pages?items_type=posts&item_id='+w.postId+'&source_id='+sid)}
+    catch(e){
+      if(e.status===401)throw e;
+      if(/No pages/i.test(e.message)){w.pages[sid].forEach(pid=>w.st[sid+':'+pid]='skip');continue}
+      w.note='проверка не удалась: '+e.message;continue;
+    }
+    const links=j.posts_published_links||{},planned=j.posts_published_planned||{},errs=j.posts_errors||{};
+    for(const pid of w.pages[sid]){
+      const key=sid+':'+pid;
+      if(['retried','dead'].includes(w.st[key]))continue;
+      if(links[pid]||planned[pid]){w.st[key]='ok';w.fail[key]=0;continue}
+      const e=errs[pid];
+      if(e&&e.length){w.fail[key]=(w.fail[key]||0)+1;w.st[key]='err';w.errText=[].concat(e).join('; ')}
+      else w.st[key]='pend';
+    }
+  }
+  const failing=Object.keys(w.st).filter(k=>w.st[k]==='err'&&((w.fail[k]||0)>=2||final));
+  if(failing.length)await repost(w,failing);
+  if(w.state!=='watch')return;
+  const vals=Object.values(w.st);
+  const allDone=vals.length&&vals.every(v=>['ok','skip','retried'].includes(v));
+  if(allDone){w.state='done';return}
+  if(final){
+    const bad=Object.keys(w.st).filter(k=>['pend','err'].includes(w.st[k]));
+    if(bad.length){w.state='alarm';alarm('«'+w.label+'»: за час не подтвердилась публикация ('+bad.length+' стр.)')}
+    else w.state='done';
+  }
+}
+let checking=false;
+async function tick(){
+  if(checking||!token())return;
+  checking=true;
+  try{
+    for(const w of watch.slice()){
+      if(w.state!=='watch')continue;
+      const now=Date.now(),lastIdx=WATCH_OFFS.length-1;
+      if(now<w.at+WATCH_OFFS[Math.min(w.k,lastIdx)]*60000)continue;
+      const final=w.k>=lastIdx||now>w.at+(WATCH_OFFS[lastIdx]+1)*60000;
+      await checkWatch(w,final);
+      w.k++;
+      saveWatch();renderWatch();
+    }
+    watch=watch.filter(w=>w.state==='watch'||Date.now()-w.at<86400000);
+  }catch(e){
+    if(e.status===401){alarm('Хуппи не принял токен (401) — слежка остановлена');}
+  }finally{checking=false;saveWatch();renderWatch()}
+}
+function renderWatch(){
+  $('#watchCard').classList.toggle('hidden',!watch.length);
+  const lab={watch:['следим','st-run'],done:['готово ✓','st-ok'],alarm:['СИГНАЛ','st-err']};
+  $('#watchRows').innerHTML=watch.map(w=>{
+    const v=Object.values(w.st),ok=v.filter(x=>x==='ok'||x==='skip').length,total=Object.values(w.pages).reduce((a,b)=>a+b.length,0);
+    const next=w.state==='watch'?' · след. '+fmt(new Date(w.at+WATCH_OFFS[Math.min(w.k,WATCH_OFFS.length-1)]*60000)):'';
+    const L=lab[w.state]||['—',''];
+    return '<tr><td>'+esc(w.label)+'</td><td>'+esc(fmt(new Date(w.at)))+'</td><td>'+Math.min(w.k,WATCH_OFFS.length)+'/'+WATCH_OFFS.length+esc(next)+'</td><td class="'+L[1]+'">'+L[0]+'<div class="cap">'+ok+'/'+total+' стр. вышло'+(w.note?' · '+esc(w.note):'')+(w.errText&&w.state!=='done'?'<br>'+esc(w.errText):'')+'</div></td></tr>';
+  }).join('');
+}
+$('#watchClear').onclick=()=>{watch=watch.filter(w=>w.state==='watch');saveWatch();renderWatch()};
+
 /* ---------- старт ---------- */
 renderUpload();
 if(token()&&!hooppySets.length)loadSets().then(renderUpload).catch(()=>{});
 else if(token())loadSets().then(renderUpload).catch(()=>{});
+if(token())loadLikee().then(()=>renderProjects()).catch(()=>{});
+renderWatch();setInterval(tick,20000);setTimeout(tick,3000);
 if(!token())showTab({btn:'tabSet',view:'viewSet'});
 </script>
 </body>
 </html>
+
+Stop Claude
