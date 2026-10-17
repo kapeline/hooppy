@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Заливка в Хуппи</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--muted:#6b6b72;--line:#e3e1db;--accent:#5b4bdb;--accent-ink:#fff;--ok:#1a8a4a;--err:#c93434;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--card:#1d1d22;--ink:#f1f1f3;--muted:#9a9aa5;--line:#2e2e36;--accent:#8b7dff;--accent-ink:#101014;--ok:#4cc783;--err:#ff7070;--warn:#e0b252}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px 16px 80px}
+h1{font-size:24px;margin:8px 0 2px}
+.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h2{font-size:17px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:92px;resize:vertical}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--accent);color:var(--accent-ink);font-weight:600}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+button.small{padding:6px 10px;font-size:13px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:0 0 auto}.grow{flex:1 1 220px!important}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:28px 16px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px}
+.cap{color:var(--muted);font-size:13px}
+.st-ok{color:var(--ok)}.st-err{color:var(--err)}.st-wait{color:var(--muted)}.st-run{color:var(--warn)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.tabs button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.hidden{display:none}
+.msg{padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:14px;margin-top:10px;white-space:pre-wrap}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Заливка в Хуппи</h1>
+  <p class="sub">Кидаешь видео — они сами уходят в Хуппи с подписями по кругу и временем по правилам.</p>
+
+  <div class="tabs">
+    <button id="tabUp" class="on">Загрузка</button>
+    <button id="tabPr">Проекты</button>
+    <button id="tabSet">Доступ</button>
+  </div>
+
+  <!-- ЗАГРУЗКА -->
+  <section id="viewUp">
+    <div class="card">
+      <h2>1. Проект</h2>
+      <select id="projSel"></select>
+      <div class="hint" id="projInfo"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Видео</h2>
+      <div class="drop" id="drop">Перетащи видео сюда или нажми, чтобы выбрать<br><span class="hint">MP4 / MOV. Порядок — по названию файла (rls_01, rls_02…)</span></div>
+      <input type="file" id="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple class="hidden">
+    </div>
+
+    <div class="card">
+      <h2>3. Время</h2>
+      <div class="row">
+        <label class="row grow" style="margin:0"><input type="checkbox" id="firstNow"> первое видео — опубликовать сразу</label>
+      </div>
+      <label>Окна времени на каждый день (по одному окну = одна публикация в день)</label>
+      <input type="text" id="windows" placeholder="09:00-14:00, 15:00-21:00">
+      <div class="hint">В каждом окне время выбирается случайно. Сегодняшние окна, которые уже прошли, пропускаются.</div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnPlan" disabled>Показать расписание</button>
+        <button id="btnGo" class="hidden">Отправить в Хуппи</button>
+        <button id="btnClear" class="ghost">Очистить</button>
+      </div>
+      <div class="msg hidden" id="planMsg"></div>
+    </div>
+
+    <div class="card hidden" id="listCard">
+      <h2>Что получится</h2>
+      <table>
+        <thead><tr><th>#</th><th>Файл</th><th>Когда</th><th>Подпись</th><th>Статус</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ПРОЕКТЫ -->
+  <section id="viewPr" class="hidden">
+    <div id="projList"></div>
+    <div class="row"><button id="addProj" class="ghost">+ Новый проект</button>
+      <button id="exportCfg" class="ghost">Скачать настройки</button>
+      <button id="importCfg" class="ghost">Загрузить настройки</button>
+      <input type="file" id="importFile" accept="application/json" class="hidden"></div>
+  </section>
+
+  <!-- ДОСТУП -->
+  <section id="viewSet" class="hidden">
+    <div class="card">
+      <h2>Токен Хуппи</h2>
+      <label>Токен доступа (из кабинета Хуппи → API)</label>
+      <input type="password" id="token" autocomplete="off" placeholder="вставь токен">
+      <div class="row" style="margin-top:10px">
+        <button id="saveTok">Сохранить и проверить</button>
+        <button id="delTok" class="ghost">Удалить токен</button>
+      </div>
+      <div class="hint">Токен хранится только в этом браузере и отправляется только на api.hooppy.ru. На самом сайте (в коде) его нет.</div>
+      <div class="msg hidden" id="tokMsg"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+const API='https://api.hooppy.ru/api';
+const $=s=>document.querySelector(s);
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+
+/* ---------- состояние ---------- */
+const DEFAULT_PROJECTS=[
+  {id:'rogov',name:'рогов (Ужин с Роговым)',hooppyId:null,match:['обсудим','рогов','ужин'],
+   captions:['Полный выпуск шоу «Ужин с Роговым» — уже в VK Видео!','«Ужин с Роговым» — эксклюзивно в VK Видео.','Новый выпуск «Ужина с Роговым» — только в VK Видео!'],
+   firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0},
+  {id:'zvezdy',name:'звезды (Звёзды)',hooppyId:null,match:['звезд','звёзд'],
+   captions:['Новый сезон шоу «Звёзды» уже сейчас в VK Видео!','Третий сезон шоу «Звёзды» — эксклюзивно в VK Видео.','Ещё больше юмора — в новом выпуске шоу «Звёзды» в VK Видео!'],
+   firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0}
+];
+let projects=store.get('projects',null)||DEFAULT_PROJECTS;
+let hooppySets=store.get('sets',[]);
+let queue=[];      // {file,name,when,caption,state,pct,err}
+let planned=false, busy=false;
+
+const saveProjects=()=>store.set('projects',projects);
+const token=()=>store.get('token','');
+
+/* ---------- вкладки ---------- */
+function showTab(t){
+  for(const [b,v] of [['#tabUp','#viewUp'],['#tabPr','#viewPr'],['#tabSet','#viewSet']]){
+    $(b).classList.toggle('on',b==='#'+t.btn);$(v).classList.toggle('hidden',v!=='#'+t.view);
+  }
+}
+$('#tabUp').onclick=()=>{showTab({btn:'tabUp',view:'viewUp'});renderUpload()};
+$('#tabPr').onclick=()=>{showTab({btn:'tabPr',view:'viewPr'});renderProjects()};
+$('#tabSet').onclick=()=>showTab({btn:'tabSet',view:'viewSet'});
+
+/* ---------- API ---------- */
+async function api(path,opts={}){
+  const r=await fetch(API+path,{...opts,headers:{Authorization:'Bearer '+token(),Accept:'application/json',...(opts.headers||{})}});
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok){const m=(j&&j.message)||('HTTP '+r.status);const e=new Error(r.status===401?'Хуппи не принял токен (401)':m);e.status=r.status;throw e}
+  return j;
+}
+async function loadSets(){
+  let all=[],page=1;
+  for(;;){
+    const j=await api('/posts/projects?page='+page);
+    all=all.concat((j.list||[]).filter(x=>!x.is_deleted).map(x=>({id:x.id,name:x.name})));
+    if(!j.is_has_more||page>20)break;page++;
+  }
+  hooppySets=all;store.set('sets',all);
+  const norm=s=>s.toLowerCase().replace(/ё/g,'е');
+  for(const p of projects){
+    if(p.hooppyId&&all.some(s=>s.id===p.hooppyId))continue;
+    const hit=all.find(s=>(p.match||[]).some(m=>norm(s.name).includes(norm(m))));
+    if(hit)p.hooppyId=hit.id;
+  }
+  saveProjects();
+  return all;
+}
+
+/* ---------- доступ ---------- */
+$('#token').value=token();
+$('#saveTok').onclick=async()=>{
+  const v=$('#token').value.trim();if(!v)return;
+  store.set('token',v);
+  const m=$('#tokMsg');m.classList.remove('hidden');m.textContent='Проверяю…';
+  try{const s=await loadSets();m.textContent='Токен принят. Наборов страниц найдено: '+s.length+'.';m.className='msg st-ok'}
+  catch(e){m.textContent='Не вышло: '+e.message;m.className='msg st-err'}
+};
+$('#delTok').onclick=()=>{store.set('token','');$('#token').value='';$('#tokMsg').textContent='Токен удалён из этого браузера.';$('#tokMsg').className='msg'};
+
+/* ---------- проекты ---------- */
+function renderProjects(){
+  const box=$('#projList');box.innerHTML='';
+  projects.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='card';
+    const opts=['<option value="">— выбери набор страниц —</option>'].concat(hooppySets.map(s=>`<option value="${s.id}" ${s.id===p.hooppyId?'selected':''}>${esc(s.name)}</option>`));
+    if(p.hooppyId&&!hooppySets.some(s=>s.id===p.hooppyId))opts.push(`<option value="${p.hooppyId}" selected>ID ${p.hooppyId}</option>`);
+    d.innerHTML=`<h2>${esc(p.name)}</h2>
+      <label>Название проекта</label><input type="text" data-k="name" value="${esc(p.name)}">
+      <label>Набор страниц в Хуппи ${hooppySets.length?'':'<span class="pill">сначала вставь токен на вкладке «Доступ»</span>'}</label>
+      <select data-k="hooppyId">${opts.join('')}</select>
+      <label>Подписи — по одной на строку, идут по кругу</label>
+      <textarea data-k="captions">${esc(p.captions.join('\n'))}</textarea>
+      <label>Окна времени на день</label><input type="text" data-k="windows" value="${esc(p.windows)}">
+      <label class="row" style="margin-top:10px"><input type="checkbox" data-k="firstNow" ${p.firstNow?'checked':''}> первое видео по умолчанию — сразу</label>
+      <div class="row" style="margin-top:10px"><span class="hint grow">Следующая подпись по кругу: №${(p.nextCap%Math.max(1,p.captions.length))+1}</span>
+      <button class="ghost small" data-act="reset">Сбросить круг</button>
+      <button class="ghost small" data-act="del">Удалить проект</button></div>`;
+    d.querySelectorAll('[data-k]').forEach(el=>el.onchange=()=>{
+      const k=el.dataset.k;
+      if(k==='captions')p.captions=el.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      else if(k==='hooppyId')p.hooppyId=el.value?Number(el.value):null;
+      else if(k==='firstNow')p.firstNow=el.checked;
+      else p[k]=el.value;
+      saveProjects();
+    });
+    d.querySelector('[data-act=reset]').onclick=()=>{p.nextCap=0;saveProjects();renderProjects()};
+    d.querySelector('[data-act=del]').onclick=()=>{if(confirm('Удалить проект «'+p.name+'»?')){projects.splice(i,1);saveProjects();renderProjects()}};
+    box.appendChild(d);
+  });
+}
+$('#addProj').onclick=()=>{projects.push({id:'p'+Date.now(),name:'Новый проект',hooppyId:null,match:[],captions:[''],firstNow:false,windows:'09:00-14:00, 15:00-21:00',nextCap:0});saveProjects();renderProjects()};
+$('#exportCfg').onclick=()=>{
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(projects,null,2)],{type:'application/json'}));a.download='hooppy-projects.json';a.click();
+};
+$('#importCfg').onclick=()=>$('#importFile').click();
+$('#importFile').onchange=async e=>{
+  try{const j=JSON.parse(await e.target.files[0].text());if(Array.isArray(j)){projects=j;saveProjects();renderProjects()}}catch(err){alert('Не получилось прочитать файл')}
+};
+
+/* ---------- загрузка ---------- */
+const cur=()=>projects.find(p=>p.id===$('#projSel').value)||projects[0];
+function renderUpload(){
+  const sel=$('#projSel'),keep=sel.value;
+  sel.innerHTML=projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  if(keep&&projects.some(p=>p.id===keep))sel.value=keep;
+  onProj();
+}
+function onProj(){
+  const p=cur();if(!p)return;
+  $('#firstNow').checked=!!p.firstNow;$('#windows').value=p.windows;
+  const set=hooppySets.find(s=>s.id===p.hooppyId);
+  $('#projInfo').innerHTML=p.hooppyId?('Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1))
+    :'<span class="st-err">Для проекта не выбран набор страниц Хуппи — открой «Проекты» (и сначала вставь токен в «Доступ»).</span>';
+  resetPlan();
+}
+$('#projSel').onchange=onProj;
+
+const drop=$('#drop'),fileIn=$('#file');
+drop.onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)};
+fileIn.onchange=e=>{addFiles(e.target.files);fileIn.value=''};
+function addFiles(list){
+  for(const f of list){
+    if(!/\.(mp4|mov)$/i.test(f.name)&&!/^video\//.test(f.type))continue;
+    if(queue.some(q=>q.file.name===f.name&&q.file.size===f.size))continue;
+    queue.push({file:f,name:f.name,state:'wait',pct:0});
+  }
+  queue.sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true}));
+  resetPlan();
+}
+$('#btnClear').onclick=()=>{if(busy)return;queue=[];resetPlan()};
+
+function resetPlan(){
+  planned=false;
+  queue.forEach(q=>{q.when=null;q.caption=null;if(q.state!=='ok'){q.state='wait'}});
+  $('#btnGo').classList.add('hidden');
+  $('#btnPlan').disabled=!queue.length||busy;
+  $('#planMsg').classList.add('hidden');
+  renderRows();
+}
+
+/* окна времени */
+function parseWindows(s){
+  const w=[];
+  for(const part of s.split(',')){
+    const m=part.trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
+    if(!m)continue;
+    const a=+m[1]*60+ +m[2],b=+m[3]*60+ +m[4];
+    if(b>a)w.push([a,b]);
+  }
+  return w.sort((x,y)=>x[0]-y[0]);
+}
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+function makeTimes(n,firstNow,windows){
+  const out=[],now=new Date(),minLead=10; // минут от «сейчас»
+  let last=null;
+  if(firstNow&&n>0){out.push({now:true,date:new Date(now)});last=new Date(now)}
+  let day=new Date(now);day.setHours(0,0,0,0);
+  let guard=0;
+  while(out.length<n&&guard++<800){
+    for(const [a,b] of windows){
+      if(out.length>=n)break;
+      let lo=a,hi=b;
+      const isToday=day.getTime()===new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+      if(isToday){
+        const nm=now.getHours()*60+now.getMinutes()+minLead;
+        lo=Math.max(lo,nm);
+        if(lo>=hi)continue;
+      }
+      let t=new Date(day);t.setMinutes(rnd(lo,hi-1));
+      if(last&&t-last<30*60000)t=new Date(last.getTime()+30*60000);
+      out.push({now:false,date:t});last=t;
+    }
+    day.setDate(day.getDate()+1);
+  }
+  return out;
+}
+const fmt=d=>d.toLocaleString('ru-RU',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+
+$('#btnPlan').onclick=()=>{
+  const p=cur(),msg=$('#planMsg');msg.classList.remove('hidden');msg.className='msg';
+  if(!p.captions.length){msg.textContent='У проекта нет подписей — добавь их на вкладке «Проекты».';return}
+  const w=parseWindows($('#windows').value);
+  if(!w.length){msg.textContent='Окна времени заданы неверно. Формат: 09:00-14:00, 15:00-21:00';return}
+  p.windows=$('#windows').value;p.firstNow=$('#firstNow').checked;saveProjects();
+  const todo=queue.filter(q=>q.state!=='ok');
+  const times=makeTimes(todo.length,p.firstNow,w);
+  todo.forEach((q,i)=>{
+    q.when=times[i];
+    q.caption=p.captions[(p.nextCap+i)%p.captions.length];
+    q.state='wait';q.err=null;
+  });
+  planned=true;
+  $('#btnGo').classList.remove('hidden');
+  $('#btnGo').disabled=!p.hooppyId||!token();
+  msg.textContent=!token()?'Сначала вставь токен на вкладке «Доступ».':!p.hooppyId?'Выбери набор страниц Хуппи для проекта (вкладка «Проекты»).':'Проверь расписание ниже. Если всё ок — «Отправить в Хуппи». Страницу не закрывай, пока идёт загрузка.';
+  renderRows();
+};
+
+function renderRows(){
+  $('#listCard').classList.toggle('hidden',!queue.length);
+  $('#rows').innerHTML=queue.map((q,i)=>{
+    const when=q.when?(q.when.now?'<b>сразу</b>':esc(fmt(q.when.date))):'—';
+    const st={wait:['ожидает','st-wait'],run:['загрузка…','st-run'],ok:['готово ✓','st-ok'],err:['ошибка','st-err']}[q.state];
+    return `<tr><td>${i+1}</td><td>${esc(q.name)}<div class="cap">${(q.file.size/1048576).toFixed(1)} МБ</div></td><td>${when}</td>
+      <td class="cap">${q.caption?esc(q.caption):'—'}</td>
+      <td class="${st[1]}">${st[0]}${q.state==='run'?`<div class="bar"><i style="width:${q.pct}%"></i></div>`:''}${q.err?`<div class="cap st-err">${esc(q.err)}</div>`:''}</td></tr>`;
+  }).join('');
+}
+
+function uploadFile(file,onPct){
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('file_id',Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12));
+    x.open('POST',API+'/files/media/upload');
+    x.setRequestHeader('Authorization','Bearer '+token());
+    x.setRequestHeader('Accept','application/json');
+    x.upload.onprogress=e=>{if(e.lengthComputable)onPct(Math.round(e.loaded/e.total*100))};
+    x.onload=()=>{
+      let j=null;try{j=JSON.parse(x.responseText)}catch(e){}
+      if(x.status>=200&&x.status<300&&j&&j.photo)res(j.photo);
+      else rej(new Error((j&&j.message)||('загрузка: HTTP '+x.status)));
+    };
+    x.onerror=()=>rej(new Error('нет связи с Хуппи'));
+    x.send(fd);
+  });
+}
+
+async function createPost(p,q,media){
+  const body={
+    publication_how_type:2,
+    project_id:p.hooppyId,
+    texts:[{text:'<p>'+esc(q.caption)+'</p>',source_id:0}],
+    attachments:[{type:'photos',data:[media]}]
+  };
+  if(q.when.now){body.publication_when_type=1}
+  else{
+    const d=q.when.date;
+    body.publication_when_type=2;
+    body.publication_date={date:`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,hours:pad(d.getHours()),minutes:pad(d.getMinutes())};
+  }
+  return api('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+}
+
+$('#btnGo').onclick=async()=>{
+  if(busy||!planned)return;
+  const p=cur();
+  const todo=queue.filter(q=>q.state!=='ok'&&q.when);
+  if(!todo.length)return;
+  if(!confirm('Отправить в Хуппи '+todo.length+' видео? Первое будет опубликовано '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
+  busy=true;$('#btnGo').disabled=true;$('#btnPlan').disabled=true;
+  let done=0;
+  for(const q of todo){
+    q.state='run';q.pct=0;q.err=null;renderRows();
+    try{
+      const media=await uploadFile(q.file,pct=>{q.pct=pct;renderRows()});
+      await createPost(p,q,media);
+      q.state='ok';done++;
+      // подпись по кругу сдвигаем только после успешной отправки
+      p.nextCap=(p.nextCap+1)%Math.max(1,p.captions.length);saveProjects();
+    }catch(e){
+      q.state='err';q.err=e.message;
+      if(e.status===401)break;
+    }
+    renderRows();
+  }
+  busy=false;$('#btnPlan').disabled=false;$('#btnGo').disabled=false;
+  const failed=queue.filter(q=>q.state==='err').length;
+  const m=$('#planMsg');m.classList.remove('hidden');
+  m.className='msg '+(failed?'st-err':'st-ok');
+  m.textContent=failed?`Отправлено: ${done}. С ошибкой: ${failed}. Нажми «Показать расписание» ещё раз — отправятся только те, что не ушли (подписи и время пересчитаются).`:`Готово: ${done} видео в Хуппи. Проверь раздел «Посты» → отложенные.`;
+  onProjInfoOnly();
+};
+function onProjInfoOnly(){const p=cur();const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
+
+/* ---------- старт ---------- */
+renderUpload();
+if(token()&&!hooppySets.length)loadSets().then(renderUpload).catch(()=>{});
+else if(token())loadSets().then(renderUpload).catch(()=>{});
+if(!token())showTab({btn:'tabSet',view:'viewSet'});
+</script>
+</body>
+</html>
