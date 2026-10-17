@@ -71,6 +71,16 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <div class="row">
         <label class="row grow" style="margin:0"><input type="checkbox" id="firstNow"> первое видео — опубликовать сразу</label>
       </div>
+      <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+        <label style="margin:0">Сегодня опубликовать (шт.)<br><input type="number" id="todayCount" min="0" max="30" placeholder="по окнам" style="width:120px"></label>
+        <label style="margin:0">в промежутке<br><input type="text" id="todayWin" placeholder="12:00-22:00" style="width:140px"></label>
+      </div>
+      <div class="hint">Пусто — как раньше (сегодня по оставшимся окнам). Если число задано, сегодня уйдёт ровно столько видео, равномерно по промежутку; «сразу» входит в это число. 0 — сегодня ничего.</div>
+      <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+        <label style="margin:0">Остальные — начиная с даты<br><input type="date" id="startDate"></label>
+        <label style="margin:0">с<br><select id="startPart"><option value="morning">утра</option><option value="evening">вечера</option></select></label>
+      </div>
+      <div class="hint">Дата пустая — со следующего дня (если задано «сегодня») или сразу. «С вечера» — в первый день только последнее окно. Дальше — по окнам ниже, по умолчанию 2 в день.</div>
       <label>Окна времени на каждый день (по одному окну = одна публикация в день)</label>
       <input type="text" id="windows" placeholder="09:00-14:00, 15:00-21:00">
       <div class="hint">В каждом окне время выбирается случайно. Сегодняшние окна, которые уже прошли, пропускаются.</div>
@@ -286,25 +296,45 @@ function parseWindows(s){
   return w.sort((x,y)=>x[0]-y[0]);
 }
 const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
-function makeTimes(n,firstNow,windows){
-  const out=[],now=new Date(),minLead=10; // минут от «сейчас»
+function makeTimes(n,firstNow,windows,o){
+  o=o||{};
+  const out=[],now=new Date(),minLead=10,GAP=30*60000;
   let last=null;
+  const push=t=>{if(last&&t-last<GAP)t=new Date(last.getTime()+GAP);out.push({now:false,date:t});last=t};
+  const today0=new Date(now);today0.setHours(0,0,0,0);
+  const nowMin=now.getHours()*60+now.getMinutes()+minLead;
+  const hasToday=o.todayCount!=null;
   if(firstNow&&n>0){out.push({now:true,date:new Date(now)});last=new Date(now)}
-  let day=new Date(now);day.setHours(0,0,0,0);
-  let guard=0;
+  if(hasToday){
+    let k=o.todayCount-((firstNow&&n>0)?1:0);
+    k=Math.min(k,n-out.length);
+    const tw=o.todayWin||[windows.length?windows[0][0]:540,windows.length?windows[windows.length-1][1]:1260];
+    if(k>0){
+      const lo0=Math.max(tw[0],nowMin),hi0=tw[1];
+      if(hi0>lo0){
+        const step=(hi0-lo0)/k;
+        for(let i=0;i<k;i++){
+          const x=Math.floor(lo0+i*step),y=Math.max(x,Math.floor(lo0+(i+1)*step)-1);
+          const t=new Date(today0);t.setMinutes(rnd(x,y));
+          push(t);
+        }
+      }
+    }
+  }
+  let day=new Date(today0);
+  if(o.startDate){const sd=new Date(o.startDate);sd.setHours(0,0,0,0);if(sd>day)day=sd}
+  if(hasToday&&day.getTime()<=today0.getTime())day.setDate(day.getDate()+1);
+  let first=true,guard=0;
   while(out.length<n&&guard++<800){
-    for(const [a,b] of windows){
+    let ws=windows;
+    if(first&&o.startPart==='evening'&&windows.length>1)ws=[windows[windows.length-1]];
+    first=false;
+    for(const [a,b] of ws){
       if(out.length>=n)break;
       let lo=a,hi=b;
-      const isToday=day.getTime()===new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
-      if(isToday){
-        const nm=now.getHours()*60+now.getMinutes()+minLead;
-        lo=Math.max(lo,nm);
-        if(lo>=hi)continue;
-      }
-      let t=new Date(day);t.setMinutes(rnd(lo,hi-1));
-      if(last&&t-last<30*60000)t=new Date(last.getTime()+30*60000);
-      out.push({now:false,date:t});last=t;
+      if(day.getTime()===today0.getTime()){lo=Math.max(lo,nowMin);if(lo>=hi)continue}
+      const t=new Date(day);t.setMinutes(rnd(lo,hi-1));
+      push(t);
     }
     day.setDate(day.getDate()+1);
   }
@@ -312,6 +342,17 @@ function makeTimes(n,firstNow,windows){
 }
 const fmt=d=>d.toLocaleString('ru-RU',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 
+function planOpts(){
+  const o={};
+  const tc=$('#todayCount').value.trim();
+  if(tc!==''&&!isNaN(+tc)&&+tc>=0)o.todayCount=Math.floor(+tc);
+  const tw=parseWindows($('#todayWin').value);
+  if(tw.length)o.todayWin=[tw[0][0],tw[tw.length-1][1]];
+  const sd=$('#startDate').value;
+  if(sd){const q=sd.split('-').map(Number);o.startDate=new Date(q[0],q[1]-1,q[2])}
+  o.startPart=$('#startPart').value;
+  return o;
+}
 $('#btnPlan').onclick=()=>{
   const p=cur(),msg=$('#planMsg');msg.classList.remove('hidden');msg.className='msg';
   if(!p.captions.length){msg.textContent='У проекта нет подписей — добавь их на вкладке «Проекты».';return}
@@ -319,7 +360,7 @@ $('#btnPlan').onclick=()=>{
   if(!w.length){msg.textContent='Окна времени заданы неверно. Формат: 09:00-14:00, 15:00-21:00';return}
   p.windows=$('#windows').value;p.firstNow=$('#firstNow').checked;saveProjects();
   const todo=queue.filter(q=>q.state!=='ok');
-  const times=makeTimes(todo.length,p.firstNow,w);
+  const times=makeTimes(todo.length,p.firstNow,w,planOpts());
   todo.forEach((q,i)=>{
     q.when=times[i];
     q.caption=p.captions[(p.nextCap+i)%p.captions.length];
