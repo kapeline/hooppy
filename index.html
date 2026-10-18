@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Заливка в Хуппи</title>
+<title>Заливатор</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Crect%20width%3D'64'%20height%3D'64'%20rx%3D'16'%20fill%3D'%235b4bdb'%2F%3E%3Cpath%20d%3D'M32%2043V21M22.5%2030.5L32%2021l9.5%209.5'%20fill%3D'none'%20stroke%3D'%23fff'%20stroke-width%3D'6'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%2F%3E%3Crect%20x%3D'17'%20y%3D'47'%20width%3D'30'%20height%3D'5'%20rx%3D'2.5'%20fill%3D'%23fff'%2F%3E%3C%2Fsvg%3E">
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--muted:#6b6b72;--line:#e3e1db;--accent:#5b4bdb;--accent-ink:#fff;--ok:#1a8a4a;--err:#c93434;--warn:#b7791f}
@@ -40,19 +40,14 @@ th{color:var(--muted);font-weight:500;font-size:12px}
 .hidden{display:none}
 .msg{padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:14px;margin-top:10px;white-space:pre-wrap}
 .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
-.alarm{position:sticky;top:0;z-index:9;display:flex;gap:12px;align-items:center;justify-content:space-between;background:var(--err);color:#fff;padding:12px 14px;border-radius:12px;margin-bottom:12px;font-weight:600;animation:blink 1s step-end infinite}
-.alarm button{background:#fff;color:#000}
-@keyframes blink{50%{filter:brightness(1.35)}}
 </style>
 </head>
 <body>
 <main>
-  <h1>Заливка в Хуппи</h1>
+  <h1>Заливатор</h1>
   <p class="sub">Кидаешь видео — они сами уходят в Хуппи с подписями по кругу и временем по правилам.</p>
 
-  <div id="alarmBox" class="alarm hidden"><span id="alarmTxt"></span><button id="alarmStop">Выключить сигнал</button></div>
-
-<div class="tabs">
+  <div class="tabs">
     <button id="tabUp" class="on">Загрузка</button>
     <button id="tabPr">Проекты</button>
     <button id="tabSet">Доступ</button>
@@ -83,7 +78,8 @@ th{color:var(--muted);font-weight:500;font-size:12px}
         <label style="margin:0">Сегодня опубликовать (шт.)<br><input type="number" id="todayCount" min="0" max="30" placeholder="по окнам" style="width:120px"></label>
         <label style="margin:0">в промежутке<br><input type="text" id="todayWin" placeholder="12:00-22:00" style="width:140px"></label>
       </div>
-      <div class="hint">Пусто — как раньше (сегодня по оставшимся окнам). Если число задано, сегодня уйдёт ровно столько видео, равномерно по промежутку; «сразу» входит в это число. 0 — сегодня ничего.</div>
+      <div id="contBox" class="hidden"><label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" id="contAfter" checked> <span id="contTxt"></span></label></div>
+<div class="hint">Пусто — как раньше (сегодня по оставшимся окнам). Если число задано, сегодня уйдёт ровно столько видео, равномерно по промежутку; «сразу» входит в это число. 0 — сегодня ничего.</div>
       <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
         <label style="margin:0">Остальные — начиная с даты<br><input type="date" id="startDate"></label>
         <label style="margin:0">с<br><select id="startPart"><option value="morning">утра</option><option value="evening">вечера</option></select></label>
@@ -139,7 +135,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
     </div>
 <div class="card">
 <h2>Сигнал о проблемах</h2>
-<div class="hint" style="margin:0 0 10px">Если видео совсем не выкладывается, сайт включит звук, замигает вкладкой и покажет уведомление. Нажми кнопку один раз, чтобы браузер разрешил звук и уведомления.</div>
+<div class="hint" style="margin:0 0 10px">Если видео совсем не выкладывается, сайт включит звук (мягкий «дзынь» как в «Не забыть»), замигает вкладкой и покажет уведомление. Всё стихнет, когда вернёшься на вкладку или кликнешь. Нажми кнопку один раз, чтобы браузер разрешил звук и уведомления.</div>
 <div class="row"><button id="notifOn">Включить звук и уведомления</button><button id="notifTest" class="ghost">Проверить сигнал</button></div>
 <div class="msg hidden" id="notifMsg"></div>
 </div>
@@ -300,7 +296,7 @@ function addFiles(list){
 }
 $('#btnClear').onclick=()=>{if(busy)return;queue=[];resetPlan()};
 
-function resetPlan(){
+function resetPlan(){updateCont();
   planned=false;
   queue.forEach(q=>{q.when=null;q.caption=null;if(q.state!=='ok'){q.state='wait'}});
   $('#btnGo').classList.add('hidden');
@@ -349,6 +345,7 @@ function makeTimes(n,firstNow,windows,o){
   let day=new Date(today0);
   if(o.startDate){const sd=new Date(o.startDate);sd.setHours(0,0,0,0);if(sd>day)day=sd}
   if(hasToday&&day.getTime()<=today0.getTime())day.setDate(day.getDate()+1);
+  if(o.after&&!hasToday&&!o.startDate){const ad=new Date(o.after);ad.setHours(0,0,0,0);if(ad>day)day=ad}
   let first=true,guard=0;
   while(out.length<n&&guard++<800){
     let ws=windows;
@@ -358,6 +355,7 @@ function makeTimes(n,firstNow,windows,o){
       if(out.length>=n)break;
       let lo=a,hi=b;
       if(day.getTime()===today0.getTime()){lo=Math.max(lo,nowMin);if(lo>=hi)continue}
+      if(o.after){const am=Math.ceil((o.after.getTime()-day.getTime())/60000)+30;lo=Math.max(lo,am);if(lo>=hi)continue}
       const t=new Date(day);t.setMinutes(rnd(lo,hi-1));
       push(t);
     }
@@ -376,6 +374,7 @@ function planOpts(){
   const sd=$('#startDate').value;
   if(sd){const q=sd.split('-').map(Number);o.startDate=new Date(q[0],q[1]-1,q[2])}
   o.startPart=$('#startPart').value;
+  if(!o.startDate&&o.todayCount==null&&$('#contAfter').checked){const pp=cur();if(pp&&pp.lastWhen)o.after=new Date(pp.lastWhen)}
   return o;
 }
 $('#btnPlan').onclick=()=>{
@@ -477,6 +476,7 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
 }catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
 }
       q.state='ok';done++;
+{const tt=q.when.now?Date.now():q.when.date.getTime();if(!p.lastWhen||tt>p.lastWhen){p.lastWhen=tt;p.lastFile=q.name}}
       // подпись по кругу сдвигаем только после успешной отправки
       p.nextCap=(p.nextCap+1)%Math.max(1,p.captions.length);saveProjects();
     }catch(e){
@@ -494,6 +494,12 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
 };
 function onProjInfoOnly(){const p=cur();const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
 
+function updateCont(){
+  const p=cur(),box=$('#contBox');if(!p||!box)return;
+  if(!p.lastWhen){box.classList.add('hidden');return}
+  box.classList.remove('hidden');
+  $('#contTxt').textContent='Последнее видео в проекте: '+fmt(new Date(p.lastWhen))+(p.lastFile?' ('+p.lastFile+')':'')+'. Продолжить после него';
+}
 /* ---------- Лайк ---------- */
 async function loadLikee(){
   let all=[],page=1;
@@ -578,28 +584,32 @@ const BASE_TITLE=document.title;
 let actx=null,beepT=null,flashT=null,alarms=[];
 function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume()}catch(e){}}
 document.addEventListener('click',unlockAudio);
+let alarmAt=0;
 function beep(){
   if(!actx)return;
-  [880,660].forEach((fr,i)=>{
-    const o=actx.createOscillator(),g=actx.createGain(),t0=actx.currentTime+i*0.28;
-    o.type='square';o.frequency.value=fr;g.gain.value=0.15;
-    o.connect(g);g.connect(actx.destination);o.start(t0);o.stop(t0+0.22);
+  [660,880].forEach((fr,i)=>{
+    const o=actx.createOscillator(),g=actx.createGain(),st=actx.currentTime+i*0.18;
+    o.type='sine';o.frequency.value=fr;o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001,st);g.gain.linearRampToValueAtTime(0.07,st+0.03);g.gain.exponentialRampToValueAtTime(0.0001,st+0.5);
+    o.start(st);o.stop(st+0.55);
   });
 }
 function alarm(msg){
   if(alarms.includes(msg))return;
-  alarms.push(msg);
-  $('#alarmTxt').textContent='Всё плохо: '+alarms.join(' • ');
-  $('#alarmBox').classList.remove('hidden');
-  if(!beepT){unlockAudio();beep();beepT=setInterval(beep,1500)}
-  if(!flashT){let on=false;flashT=setInterval(()=>{on=!on;document.title=on?'!!! НЕ ВЫКЛАДЫВАЕТСЯ !!!':BASE_TITLE},700)}
-  try{if(window.Notification&&Notification.permission==='granted')new Notification('Хуппи: не выкладывается',{body:msg,requireInteraction:true})}catch(e){}
+  alarms.push(msg);alarmAt=Date.now();
+  if(!beepT){unlockAudio();beep();beepT=setInterval(beep,3000)}
+  if(!flashT){let on=false;flashT=setInterval(()=>{on=!on;document.title=on?'(!) Не выкладывается':BASE_TITLE},800)}
+  try{if(window.Notification&&Notification.permission==='granted')new Notification('Заливатор: не выкладывается',{body:msg,requireInteraction:true})}catch(e){}
+  renderWatch();
 }
 function stopAlarm(){
   clearInterval(beepT);clearInterval(flashT);beepT=flashT=null;alarms=[];
-  document.title=BASE_TITLE;$('#alarmBox').classList.add('hidden');
+  document.title=BASE_TITLE;
 }
-$('#alarmStop').onclick=stopAlarm;
+const calmDown=()=>{if(beepT&&Date.now()-alarmAt>1500)stopAlarm()};
+document.addEventListener('click',calmDown);
+document.addEventListener('keydown',calmDown);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)calmDown()});
 $('#notifOn').onclick=async()=>{
   unlockAudio();beep();
   const m=$('#notifMsg');m.classList.remove('hidden');
@@ -650,7 +660,7 @@ async function repost(w,failing){
   failing.forEach(k=>{const [sid,pid]=k.split(':');(pages[sid]=pages[sid]||[]).push(Number(pid))});
   if(w.attempt>=2){
     w.state='alarm';failing.forEach(k=>w.st[k]='dead');
-    alarm('«'+w.label+'»: не выкладывается, две перевыкладки не помогли');
+    w.note='две перевыкладки не помогли';alarm('«'+w.label+'»: не выкладывается, две перевыкладки не помогли');
     return;
   }
   try{
@@ -662,7 +672,7 @@ async function repost(w,failing){
   }catch(e){
     if(e.status===401)throw e;
     w.state='alarm';failing.forEach(k=>w.st[k]='dead');
-    alarm('«'+w.label+'»: не смог перевыложить ('+e.message+')');
+    w.note='не смог перевыложить: '+e.message;alarm('«'+w.label+'»: не смог перевыложить ('+e.message+')');
   }
 }
 async function checkWatch(w,final){
@@ -692,7 +702,7 @@ async function checkWatch(w,final){
   if(allDone){w.state='done';return}
   if(final){
     const bad=Object.keys(w.st).filter(k=>['pend','err'].includes(w.st[k]));
-    if(bad.length){w.state='alarm';alarm('«'+w.label+'»: за час не подтвердилась публикация ('+bad.length+' стр.)')}
+    if(bad.length){w.state='alarm';w.note='за час не подтвердилась публикация';alarm('«'+w.label+'»: за час не подтвердилась публикация ('+bad.length+' стр.)')}
     else w.state='done';
   }
 }
