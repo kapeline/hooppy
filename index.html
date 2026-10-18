@@ -50,7 +50,8 @@ th{color:var(--muted);font-weight:500;font-size:12px}
   <div class="tabs">
     <button id="tabUp" class="on">Загрузка</button>
     <button id="tabPr">Проекты</button>
-    <button id="tabSet">Доступ</button>
+    <button id="tabSt">Статистика</button>
+<button id="tabSet">Доступ</button>
   </div>
 
   <!-- ЗАГРУЗКА -->
@@ -120,7 +121,32 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <input type="file" id="importFile" accept="application/json" class="hidden"></div>
   </section>
 
-  <!-- ДОСТУП -->
+  <!-- СТАТИСТИКА -->
+<section id="viewSt" class="hidden">
+<div class="card">
+<h2>Публикации по соцсетям</h2>
+<div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+<label style="margin:0">С даты<br><input type="date" id="stFrom"></label>
+<label style="margin:0">По дату (включительно)<br><input type="date" id="stTo"></label>
+<button id="stGo">Посчитать</button>
+</div>
+<div class="row" style="margin-top:10px">
+<button class="ghost small" data-st="7">7 дней</button>
+<button class="ghost small" data-st="14">14 дней</button>
+<button class="ghost small" data-st="30">30 дней</button>
+<button class="ghost small" data-st="m0">Этот месяц</button>
+<button class="ghost small" data-st="m1">Прошлый месяц</button>
+</div>
+<div class="msg hidden" id="stMsg"></div>
+<div id="stBox" class="hidden">
+<table style="margin-top:12px"><thead><tr><th>Соцсеть</th><th>Публикаций</th><th>Ошибок</th></tr></thead><tbody id="stRows"></tbody></table>
+<table style="margin-top:12px"><thead><tr><th>День</th><th>Публикаций</th></tr></thead><tbody id="stDays"></tbody></table>
+</div>
+<div class="hint" id="stNote">Публикация — это один выход поста на одну страницу соцсети (так же считает и Хуппи). Считаются только опубликованные посты за выбранный период.</div>
+</div>
+</section>
+
+<!-- ДОСТУП -->
   <section id="viewSet" class="hidden">
     <div class="card">
       <h2>Токен Хуппи</h2>
@@ -173,12 +199,13 @@ const token=()=>store.get('token','');
 
 /* ---------- вкладки ---------- */
 function showTab(t){
-  for(const [b,v] of [['#tabUp','#viewUp'],['#tabPr','#viewPr'],['#tabSet','#viewSet']]){
+  for(const [b,v] of [['#tabUp','#viewUp'],['#tabPr','#viewPr'],['#tabSt','#viewSt'],['#tabSet','#viewSet']]){
     $(b).classList.toggle('on',b==='#'+t.btn);$(v).classList.toggle('hidden',v!=='#'+t.view);
   }
 }
 $('#tabUp').onclick=()=>{showTab({btn:'tabUp',view:'viewUp'});renderUpload()};
 $('#tabPr').onclick=()=>{showTab({btn:'tabPr',view:'viewPr'});renderProjects()};
+$('#tabSt').onclick=()=>{showTab({btn:'tabSt',view:'viewSt'});initStats()};
 $('#tabSet').onclick=()=>showTab({btn:'tabSet',view:'viewSet'});
 
 /* ---------- API ---------- */
@@ -737,6 +764,87 @@ function renderWatch(){
 }
 $('#watchClear').onclick=()=>{watch=watch.filter(w=>w.state==='watch');saveWatch();renderWatch()};
 
+/* ---------- статистика ---------- */
+const NETS={1:'ВКонтакте',12:'ВКонтакте',35:'ВК Чаты',33:'Max · Каналы',28:'Max · Аккаунты',3:'Facebook',5:'Мой Мир',18:'LinkedIn',9:'Telegram · Каналы',11:'Telegram · Аккаунты',32:'Yappy',22:'WhatsApp',2:'Одноклассники',30:'TenChat',17:'YouTube',6:'Pinterest',26:'Joomla',29:'Instagram',10:'Instagram · via Facebook',7:'Instagram · via Cookies',27:'Wibes',37:'WB Chat · Каналы',36:'WB Chat · Аккаунты',16:'Viber',21:'WordPress',8:'Tumblr',23:'RuTube',4:'X · Twitter',13:'Дзен',34:'Threads',19:'Threads',14:'TikTok',31:'TikTok · via Cookies',25:'Likee',24:'Reddit'};
+const isoDay=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+function setRange(k){
+  const to=new Date(),from=new Date();
+  if(k==='m0'){from.setDate(1)}
+  else if(k==='m1'){from.setMonth(from.getMonth()-1,1);to.setDate(0)}
+  else from.setDate(from.getDate()-(Number(k)-1));
+  $('#stFrom').value=isoDay(from);$('#stTo').value=isoDay(to);
+}
+function initStats(){if(!$('#stFrom').value)setRange('7')}
+document.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>{setRange(b.dataset.st);$('#stGo').click()});
+async function apiRetry(path){
+  for(let i=0;;i++){
+    try{return await api(path)}
+    catch(e){if(e.status===429&&i<4){await new Promise(r=>setTimeout(r,3000));continue}throw e}
+  }
+}
+async function availableNets(){
+  const set=new Set();
+  try{
+    for(let page=1;page<=10;page++){
+      const j=await apiRetry('/accounts/pages?page='+page);
+      const l=j.list||[];
+      l.forEach(x=>set.add(Number(x.source_id)));
+      if(l.length<20)break;
+    }
+  }catch(e){}
+  return set;
+}
+$('#stGo').onclick=async()=>{
+  const msg=$('#stMsg');msg.classList.remove('hidden');msg.className='msg';
+  if(!token()){msg.textContent='Сначала вставь токен на вкладке «Доступ».';return}
+  const f=$('#stFrom').value,t=$('#stTo').value;
+  if(!f||!t){msg.textContent='Выбери период: обе даты.';return}
+  const fp=f.split('-').map(Number),tp=t.split('-').map(Number);
+  const fromTs=new Date(fp[0],fp[1]-1,fp[2]).getTime()/1000,toTs=new Date(tp[0],tp[1]-1,tp[2],23,59,59).getTime()/1000;
+  if(toTs<fromTs){msg.textContent='Дата «по» раньше даты «с».';return}
+  $('#stGo').disabled=true;$('#stBox').classList.add('hidden');
+  const per={},days={};let posts=0,views=0,pagesFetched=0,truncated=false;
+  try{
+    const nets=await availableNets();
+    nets.forEach(n=>{per[n]={ok:0,err:0}});
+    for(let page=1;;page++){
+      msg.textContent='Считаю… загружено страниц списка: '+pagesFetched;
+      const j=await apiRetry('/posts?is_published=1&limit=100&page='+page);
+      const list=j.list||[];
+      if(!list.length)break;
+      const stamp=p=>{const d=p.publication_date||{};return d.timestamp>0?d.timestamp:(d.source_timestamp>0?d.source_timestamp:0)};
+      let oldest=Infinity;
+      for(const p of list){
+        const ts=stamp(p);if(!ts)continue;
+        oldest=Math.min(oldest,ts);
+        if(ts<fromTs||ts>toTs)continue;
+        posts++;views+=Number(p.views)||0;
+        const errs=new Set((p.errors_for_source_ids||[]).map(Number));
+        const dk=isoDay(new Date(ts*1000));
+        for(const pg of (p.pages||[])){
+          const sid=Number(pg.source_id),e=per[sid]||(per[sid]={ok:0,err:0});
+          if(errs.has(sid))e.err++;else{e.ok++;days[dk]=(days[dk]||0)+1}
+        }
+      }
+      pagesFetched++;
+      if(!j.is_has_more)break;
+      if(pagesFetched>=80){truncated=true;break}
+      const first=stamp(list[0]),last=stamp(list[list.length-1]);
+      if(first>=last&&oldest<fromTs)break; // список идёт от новых к старым и мы уже ушли за начало периода
+    }
+    const rows=Object.keys(per).map(Number).sort((a,b)=>(per[b].ok-per[a].ok)||(NETS[a]||'').localeCompare(NETS[b]||'','ru'));
+    const totOk=rows.reduce((a,k)=>a+per[k].ok,0),totErr=rows.reduce((a,k)=>a+per[k].err,0);
+    $('#stRows').innerHTML=rows.map(k=>'<tr><td>'+esc(NETS[k]||('Соцсеть '+k))+'</td><td>'+per[k].ok+'</td><td class="'+(per[k].err?'st-err':'st-wait')+'">'+per[k].err+'</td></tr>').join('')+
+      '<tr><td><b>Итого</b></td><td><b>'+totOk+'</b></td><td><b>'+totErr+'</b></td></tr>';
+    const dks=Object.keys(days).sort().reverse();
+    $('#stDays').innerHTML=dks.length?dks.map(d=>'<tr><td>'+esc(d.split('-').reverse().join('.'))+'</td><td>'+days[d]+'</td></tr>').join(''):'<tr><td colspan="2" class="cap">за период публикаций нет</td></tr>';
+    $('#stBox').classList.remove('hidden');
+    msg.textContent='Период: '+f.split('-').reverse().join('.')+' — '+t.split('-').reverse().join('.')+'. Постов: '+posts+', публикаций на страницы: '+totOk+(totErr?', ошибок: '+totErr:'')+'.'+(views>0?' Просмотры по данным Хуппи: '+views+'.':' Просмотров нет: Хуппи не отдаёт просмотры для постов, опубликованных через него.')+(truncated?' Список был очень длинный, посчитаны только последние посты — сузь период.':'');
+  }catch(e){
+    msg.className='msg st-err';msg.textContent='Не получилось посчитать: '+e.message;
+  }finally{$('#stGo').disabled=false}
+};
+
 /* ---------- старт ---------- */
 renderUpload();
 if(token()&&!hooppySets.length)loadSets().then(renderUpload).catch(()=>{});
@@ -747,5 +855,7 @@ if(!token())showTab({btn:'tabSet',view:'viewSet'});
 </script>
 </body>
 </html>
+
+Stop Claude
 
 Stop Claude
