@@ -161,7 +161,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
     </div>
 <div class="card">
 <h2>Сигнал о проблемах</h2>
-<div class="hint" style="margin:0 0 10px">Если видео совсем не выкладывается, сайт включит звук (мягкий «дзынь» как в «Не забыть»), замигает вкладкой и покажет уведомление. Всё стихнет, когда вернёшься на вкладку или кликнешь. Нажми кнопку один раз, чтобы браузер разрешил звук и уведомления.</div>
+<div class="hint" style="margin:0 0 10px">Если видео совсем не выкладывается, сайт включит звук (три коротких «пиу»), замигает вкладкой и покажет уведомление. Всё стихнет, когда вернёшься на вкладку или кликнешь. Нажми кнопку один раз, чтобы браузер разрешил звук и уведомления.</div>
 <div class="row"><button id="notifOn">Включить звук и уведомления</button><button id="notifTest" class="ghost">Проверить сигнал</button></div>
 <div class="msg hidden" id="notifMsg"></div>
 </div>
@@ -614,11 +614,12 @@ document.addEventListener('click',unlockAudio);
 let alarmAt=0;
 function beep(){
   if(!actx)return;
-  [660,880].forEach((fr,i)=>{
-    const o=actx.createOscillator(),g=actx.createGain(),st=actx.currentTime+i*0.18;
-    o.type='sine';o.frequency.value=fr;o.connect(g);g.connect(actx.destination);
-    g.gain.setValueAtTime(0.0001,st);g.gain.linearRampToValueAtTime(0.07,st+0.03);g.gain.exponentialRampToValueAtTime(0.0001,st+0.5);
-    o.start(st);o.stop(st+0.55);
+  // три коротких «пиу-пиу-пиу» треугольной волной — резкий сигнал, не похож на мягкий дзынь из «Не забыть»
+  [784,988,784,988,784,988].forEach((fr,i)=>{
+    const o=actx.createOscillator(),g=actx.createGain(),st=actx.currentTime+i*0.14;
+    o.type='triangle';o.frequency.value=fr;o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001,st);g.gain.linearRampToValueAtTime(0.16,st+0.01);g.gain.exponentialRampToValueAtTime(0.0001,st+0.12);
+    o.start(st);o.stop(st+0.13);
   });
 }
 function alarm(msg){
