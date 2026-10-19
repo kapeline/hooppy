@@ -92,7 +92,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <div class="row" style="margin-top:12px">
         <button id="btnPlan" disabled>Показать расписание</button>
         <button id="btnGo" class="hidden">Отправить в Хуппи</button>
-        <button id="btnYappy" class="hidden ghost">Отправить отдельно в Яппи</button>
+        <button id="btnYappy" class="ghost">Отправить отдельно в Яппи</button>
         <button id="btnClear" class="ghost">Очистить</button>
       </div>
       <div class="msg hidden" id="planMsg"></div>
@@ -191,6 +191,7 @@ const DEFAULT_PROJECTS=[
    firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0}
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
+if(!projects.some(p=>p.yappy)){const rg=projects.find(p=>p.id==='rogov');projects.push({id:'petros',name:'за ужином обсудим (Петрос) — только Яппи',yappy:true,hooppyId:null,match:[],captions:(rg&&rg.captions&&rg.captions.length?rg.captions:['Новый выпуск «За ужином обсудим»!']).map(c=>c.slice(0,150)),firstNow:false,windows:'11:00-14:00, 17:00-21:00',nextCap:0});store.set('projects',projects)}
 let hooppySets=store.get('sets',[]);
 let queue=[];      // {file,name,when,caption,state,pct,err}
 let planned=false, busy=false;
@@ -561,9 +562,9 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
 };
 
 /* ---------- кнопка «Отправить отдельно в Яппи»: без Хуппи, любые видео из списка ---------- */
-new MutationObserver(()=>{$('#btnYappy').classList.toggle('hidden',$('#btnGo').classList.contains('hidden'))}).observe($('#btnGo'),{attributes:true,attributeFilter:['class']});
 $('#btnYappy').onclick=async()=>{
-  if(busy||!planned)return;
+  if(busy)return;
+  if(!planned){const m0=$('#planMsg');m0.classList.remove('hidden');m0.className='msg';m0.textContent='Сначала загрузи видео и нажми «Показать расписание» — потом эта кнопка отправит их в Яппи.';return}
   const p=cur();
   const todo=queue.filter(q=>q.when&&!q.yDone);
   const msg=$('#planMsg');msg.classList.remove('hidden');
