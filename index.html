@@ -323,7 +323,9 @@ function addFiles(list){
 }
 $('#btnClear').onclick=()=>{if(busy)return;queue=[];resetPlan()};
 
-function resetPlan(){updateCont();
+function resetPlan(){
+  if(busy){updateCont();return} // во время отправки не трогаем расписание и подписи
+  updateCont();
   planned=false;
   queue.forEach(q=>{q.when=null;q.caption=null;if(q.state!=='ok'){q.state='wait'}});
   $('#btnGo').classList.add('hidden');
