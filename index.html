@@ -190,6 +190,7 @@ const DEFAULT_PROJECTS=[
    firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0}
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
+if(!projects.some(p=>p.yappy)){const rg=projects.find(p=>p.id==='rogov');projects.push({id:'petros',name:'Яппи — За ужином обсудим (Петрос)',yappy:true,hooppyId:null,match:[],captions:(rg&&rg.captions&&rg.captions.length?rg.captions:['Новый выпуск «За ужином обсудим»!']).map(c=>c.slice(0,150)),firstNow:false,windows:'11:00-14:00, 17:00-21:00',nextCap:0});store.set('projects',projects)}
 let hooppySets=store.get('sets',[]);
 let queue=[];      // {file,name,when,caption,state,pct,err}
 let planned=false, busy=false;
@@ -298,9 +299,9 @@ function renderUpload(){
 }
 function onProj(){
   const p=cur();if(!p)return;
-  $('#firstNow').checked=!!p.firstNow;$('#windows').value=p.windows;
+  $('#firstNow').checked=!!p.firstNow;$('#windows').value=p.windows;$('#btnGo').textContent=p.yappy?'Отправить в Яппи':'Отправить в Хуппи';
   const set=hooppySets.find(s=>s.id===p.hooppyId);
-  $('#projInfo').innerHTML=p.hooppyId?('Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1))
+  $('#projInfo').innerHTML=p.yappy?('Яппи через расширение «Заливатор → Яппи» · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)):p.hooppyId?('Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1))
     :'<span class="st-err">Для проекта не выбран набор страниц Хуппи — открой «Проекты» (и сначала вставь токен в «Доступ»).</span>';
   resetPlan();
 }
@@ -423,8 +424,8 @@ $('#btnPlan').onclick=()=>{
   });
   planned=true;
   $('#btnGo').classList.remove('hidden');
-  $('#btnGo').disabled=!p.hooppyId||!token()||(p.likeeOn&&!p.likeePageId);
-  msg.textContent=!token()?'Сначала вставь токен на вкладке «Доступ».':!p.hooppyId?'Выбери набор страниц Хуппи для проекта (вкладка «Проекты»).':'Проверь расписание ниже. Если всё ок — «Отправить в Хуппи». Страницу не закрывай, пока идёт загрузка.';
+  $('#btnGo').disabled=p.yappy?false:(!p.hooppyId||!token()||(p.likeeOn&&!p.likeePageId));
+  msg.textContent=p.yappy?'Проверь расписание ниже. Если всё ок — «Отправить в Яппи». Ролики уйдут в расширение, оно выложит их само в нужное время.':!token()?'Сначала вставь токен на вкладке «Доступ».':!p.hooppyId?'Выбери набор страниц Хуппи для проекта (вкладка «Проекты»).':'Проверь расписание ниже. Если всё ок — «Отправить в Хуппи». Страницу не закрывай, пока идёт загрузка.';
   renderRows();
 };
 
@@ -475,18 +476,49 @@ async function createPost(p,q,media){
   return api('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 }
 
+/* ---------- Яппи: передаём ролики расширению «Заливатор → Яппи» ---------- */
+function yappyBridge(msg,timeout){
+  return new Promise((res,rej)=>{
+    const reqId='r'+Math.random().toString(36).slice(2);
+    const t=setTimeout(()=>{window.removeEventListener('message',h);rej(new Error('TIMEOUT'))},timeout);
+    function h(e){
+      const d=e.data;
+      if(e.source!==window||!d||d.zalY!==2||d.reqId!==reqId)return;
+      if(d.type==='progress'){if(msg.onProgress)msg.onProgress(d.pct);return}
+      clearTimeout(t);window.removeEventListener('message',h);
+      d.type==='error'?rej(new Error(d.msg)):res(d);
+    }
+    window.addEventListener('message',h);
+    const {onProgress,...rest}=msg;
+    window.postMessage({zalY:1,reqId,...rest},location.origin);
+  });
+}
+async function yappySend(q,onPct){
+  try{await yappyBridge({type:'ping'},1500)}
+  catch(e){throw new Error('Не вижу расширение «Заливатор → Яппи». Установи или включи его в Chrome и обнови эту страницу (Ctrl+Shift+R).')}
+  const when=q.when.now?Date.now():q.when.date.getTime();
+  await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:String(q.caption).slice(0,150),file:q.file,onProgress:onPct},30*60000);
+}
+
 $('#btnGo').onclick=async()=>{
   if(busy||!planned)return;
   const p=cur();
   const todo=queue.filter(q=>q.state!=='ok'&&q.when);
   if(!todo.length)return;
-  if(!confirm('Отправить в Хуппи '+todo.length+' видео? Первое будет опубликовано '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
+  if(!confirm((p.yappy?'Поставить в расписание Яппи ':'Отправить в Хуппи ')+todo.length+' видео? Первое будет опубликовано '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
   busy=true;$('#btnGo').disabled=true;$('#btnPlan').disabled=true;
   let done=0;
   for(const q of todo){
     q.state='run';q.pct=0;q.err=null;renderRows();
     try{
       let fileToSend=q.file;
+      if(p.yappy){
+        await yappySend(q,pct=>{q.pct=pct;renderRows()});
+        q.state='ok';done++;
+        {const tt=q.when.now?Date.now():q.when.date.getTime();if(!p.lastWhen||tt>p.lastWhen){p.lastWhen=tt;p.lastFile=q.name}}
+        p.nextCap=(p.nextCap+1)%Math.max(1,p.captions.length);saveProjects();
+        renderRows();continue;
+      }
 if($('#compress').checked){
 q.state='zip';q.pct=0;renderRows();
 fileToSend=await compressVideo(q,pct=>{q.pct=pct;renderRows()});
@@ -518,10 +550,10 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
   const failed=queue.filter(q=>q.state==='err').length;
   const m=$('#planMsg');m.classList.remove('hidden');
   m.className='msg '+(failed?'st-err':'st-ok');
-  m.textContent=failed?`Отправлено: ${done}. С ошибкой: ${failed}. Нажми «Показать расписание» ещё раз — отправятся только те, что не ушли (подписи и время пересчитаются).`:`Готово: ${done} видео в Хуппи. Проверь раздел «Посты» → отложенные.`;
+  m.textContent=failed?`Отправлено: ${done}. С ошибкой: ${failed}. Нажми «Показать расписание» ещё раз — отправятся только те, что не ушли (подписи и время пересчитаются).`:`Готово: ${done} видео ${p.yappy?'переданы расширению Яппи — оно само выложит их в нужное время (Chrome открыт, вход в yappy.media выполнен).':'в Хуппи. Проверь раздел «Посты» → отложенные.'}`;
   onProjInfoOnly();
 };
-function onProjInfoOnly(){const p=cur();const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
+function onProjInfoOnly(){const p=cur();if(p.yappy){onProj();return}const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
 
 function updateCont(){
   const p=cur(),box=$('#contBox');if(!p||!box)return;
