@@ -191,7 +191,11 @@ const DEFAULT_PROJECTS=[
    firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0}
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
-if(!projects.some(p=>p.yappy)){const rg=projects.find(p=>p.id==='rogov');projects.push({id:'petros',name:'за ужином обсудим (Петрос) — только Яппи',yappy:true,hooppyId:null,match:[],captions:(rg&&rg.captions&&rg.captions.length?rg.captions:['Новый выпуск «За ужином обсудим»!']).map(c=>c.slice(0,150)),firstNow:false,windows:'11:00-14:00, 17:00-21:00',nextCap:0});store.set('projects',projects)}
+projects=projects.filter(p=>!p.yappy);
+{const a=projects.find(p=>p.id==='rogov');
+  if(a&&!a.migY){a.migY=1;a.name='За ужином обсудим (Петрос, мои)';a.yappyOn=true}
+  if(!projects.some(p=>p.id==='rogov2')){projects.splice(1,0,{id:'rogov2',name:'Ужин с Роговым (готовые, от вк)',hooppyId:22277,match:['готовые','от вк'],captions:((a&&a.captions&&a.captions.length)?a.captions:['Полный выпуск шоу «Ужин с Роговым» — уже в VK Видео!']).slice(),firstNow:!!(a&&a.firstNow),windows:(a&&a.windows)||'09:00-14:00, 15:00-21:00',nextCap:0})}
+  store.set('projects',projects)}
 let hooppySets=store.get('sets',[]);
 let queue=[];      // {file,name,when,caption,state,pct,err}
 let planned=false, busy=false;
