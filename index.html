@@ -190,7 +190,6 @@ const DEFAULT_PROJECTS=[
    firstNow:true,windows:'09:00-14:00, 15:00-21:00',nextCap:0}
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
-if(!projects.some(p=>p.yappy)){const rg=projects.find(p=>p.id==='rogov');projects.push({id:'petros',name:'Яппи — За ужином обсудим (Петрос)',yappy:true,hooppyId:null,match:[],captions:(rg&&rg.captions&&rg.captions.length?rg.captions:['Новый выпуск «За ужином обсудим»!']).map(c=>c.slice(0,150)),firstNow:false,windows:'11:00-14:00, 17:00-21:00',nextCap:0});store.set('projects',projects)}
 let hooppySets=store.get('sets',[]);
 let queue=[];      // {file,name,when,caption,state,pct,err}
 let planned=false, busy=false;
@@ -261,6 +260,7 @@ function renderProjects(){
       <label>Окна времени на день</label><input type="text" data-k="windows" value="${esc(p.windows)}">
       <label class="row" style="margin-top:10px"><input type="checkbox" data-k="firstNow" ${p.firstNow?'checked':''}> первое видео по умолчанию — сразу</label>
       <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="likeeOn" ${p.likeeOn?'checked':''}> дублировать в Лайк отдельным постом (только на страницу Лайка)</label>
+      <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="yappyOn" ${p.yappyOn?'checked':''}> ещё и выкладывать в Яппи (через расширение «Заливатор → Яппи»), с тем же временем и подписью</label>
       ${p.likeeOn?`<label>Страница Лайка в Хуппи ${likeePages.length?'':'<span class="pill">страницы Лайка не найдены — подключи Лайк в Хуппи и обнови сайт</span>'}</label><select data-k="likeePageId"><option value="">— выбери страницу —</option>${likeePages.map(x=>`<option value="${x.id}" ${x.id===p.likeePageId?'selected':''}>${esc(x.name)}</option>`).join('')}</select><label>Окна времени для Лайка (пусто — то же время, что и у основного поста)</label><input type="text" data-k="likeeWindows" value="${esc(p.likeeWindows||'')}" placeholder="например 08:00-10:00, 19:00-22:00">`:''}
       <div class="row" style="margin-top:10px"><span class="hint grow">Следующая подпись по кругу: №${(p.nextCap%Math.max(1,p.captions.length))+1}</span>
       <button class="ghost small" data-act="reset">Сбросить круг</button>
@@ -272,6 +272,7 @@ function renderProjects(){
       else if(k==='firstNow')p.firstNow=el.checked;
       else if(k==='likeeOn'){p.likeeOn=el.checked;saveProjects();renderProjects();return}
       else if(k==='likeePageId')p.likeePageId=el.value?Number(el.value):null;
+      else if(k==='yappyOn')p.yappyOn=el.checked;
       else p[k]=el.value;
       saveProjects();
     });
@@ -493,11 +494,11 @@ function yappyBridge(msg,timeout){
     window.postMessage({zalY:1,reqId,...rest},location.origin);
   });
 }
-async function yappySend(q,onPct){
+async function yappySend(q,onPct,fileOv){
   try{await yappyBridge({type:'ping'},1500)}
   catch(e){throw new Error('Не вижу расширение «Заливатор → Яппи». Установи или включи его в Chrome и обнови эту страницу (Ctrl+Shift+R).')}
   const when=q.when.now?Date.now():q.when.date.getTime();
-  await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:String(q.caption).slice(0,150),file:q.file,onProgress:onPct},30*60000);
+  await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:String(q.caption).slice(0,150),file:fileOv||q.file,onProgress:onPct},30*60000);
 }
 
 $('#btnGo').onclick=async()=>{
@@ -536,6 +537,10 @@ catch(e3){if(e3.status===401)throw e3;lm=await uploadFile(fileToSend,()=>{});lre
 registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name);
 }catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
 }
+      if(p.yappyOn&&!p.yappy){
+        try{await yappySend(q,()=>{},fileToSend)}
+        catch(e5){q.err=(q.err?q.err+'; ':'')+'Яппи не принял: '+e5.message;alarm('Яппи: «'+q.name+'» не передан расширению — '+e5.message)}
+      }
       q.state='ok';done++;
 {const tt=q.when.now?Date.now():q.when.date.getTime();if(!p.lastWhen||tt>p.lastWhen){p.lastWhen=tt;p.lastFile=q.name}}
       // подпись по кругу сдвигаем только после успешной отправки
