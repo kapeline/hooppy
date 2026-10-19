@@ -92,6 +92,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <div class="row" style="margin-top:12px">
         <button id="btnPlan" disabled>Показать расписание</button>
         <button id="btnGo" class="hidden">Отправить в Хуппи</button>
+        <button id="btnYappy" class="hidden ghost">Отправить отдельно в Яппи</button>
         <button id="btnClear" class="ghost">Очистить</button>
       </div>
       <div class="msg hidden" id="planMsg"></div>
@@ -522,7 +523,7 @@ $('#btnGo').onclick=async()=>{
       }
 if($('#compress').checked){
 q.state='zip';q.pct=0;renderRows();
-fileToSend=await compressVideo(q,pct=>{q.pct=pct;renderRows()});
+fileToSend=await compressVideo(q,pct=>{q.pct=pct;renderRows()});q.zfile=fileToSend;
 q.state='run';q.pct=0;renderRows();
 }
 const media=await uploadFile(fileToSend,pct=>{q.pct=pct;renderRows()});
@@ -538,7 +539,7 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
 }catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
 }
       if(p.yappyOn&&!p.yappy){
-        try{await yappySend(q,()=>{},fileToSend)}
+        try{await yappySend(q,()=>{},fileToSend);q.yDone=true}
         catch(e5){q.err=(q.err?q.err+'; ':'')+'Яппи не принял: '+e5.message;alarm('Яппи: «'+q.name+'» не передан расширению — '+e5.message)}
       }
       q.state='ok';done++;
@@ -558,6 +559,42 @@ registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name)
   m.textContent=failed?`Отправлено: ${done}. С ошибкой: ${failed}. Нажми «Показать расписание» ещё раз — отправятся только те, что не ушли (подписи и время пересчитаются).`:`Готово: ${done} видео ${p.yappy?'переданы расширению Яппи — оно само выложит их в нужное время (Chrome открыт, вход в yappy.media выполнен).':'в Хуппи. Проверь раздел «Посты» → отложенные.'}`;
   onProjInfoOnly();
 };
+
+/* ---------- кнопка «Отправить отдельно в Яппи»: без Хуппи, любые видео из списка ---------- */
+new MutationObserver(()=>{$('#btnYappy').classList.toggle('hidden',$('#btnGo').classList.contains('hidden'))}).observe($('#btnGo'),{attributes:true,attributeFilter:['class']});
+$('#btnYappy').onclick=async()=>{
+  if(busy||!planned)return;
+  const p=cur();
+  const todo=queue.filter(q=>q.when&&!q.yDone);
+  const msg=$('#planMsg');msg.classList.remove('hidden');
+  if(!todo.length){msg.className='msg';msg.textContent='Все видео из списка уже ушли в Яппи.';return}
+  if(!confirm('Отправить ТОЛЬКО в Яппи '+todo.length+' видео (в Хуппи они не пойдут)? Первое: '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
+  busy=true;$('#btnGo').disabled=true;$('#btnYappy').disabled=true;$('#btnPlan').disabled=true;
+  let done=0,failed=0,stop=false;
+  for(const q of todo){
+    if(stop)break;
+    const prev=q.state;
+    q.state='run';q.pct=0;q.err=null;renderRows();
+    try{
+      let f=q.zfile||q.file;
+      if(!q.zfile&&$('#compress').checked){
+        q.state='zip';q.pct=0;renderRows();
+        f=await compressVideo(q,pct=>{q.pct=pct;renderRows()});q.zfile=f;
+        q.state='run';q.pct=0;renderRows();
+      }
+      await yappySend(q,pct=>{q.pct=pct;renderRows()},f);
+      q.yDone=true;done++;
+      q.zipInfo=(q.zipInfo?q.zipInfo+' · ':'')+'Яппи ✓';
+      p.nextCap=(p.nextCap+1)%Math.max(1,p.captions.length);saveProjects();
+    }catch(e){failed++;q.err='Яппи: '+e.message;if(String(e.message).startsWith('Не вижу'))stop=true}
+    q.state=prev;
+    renderRows();
+  }
+  busy=false;$('#btnPlan').disabled=false;$('#btnGo').disabled=false;$('#btnYappy').disabled=false;
+  msg.className='msg '+(failed?'st-err':'st-ok');
+  msg.textContent=failed?('В Яппи передано: '+done+'. Не вышло: '+failed+' (причина в строке видео). Нажми кнопку ещё раз — уйдут только оставшиеся.'):('Готово: '+done+' видео переданы расширению Яппи — оно выложит их само в нужное время (Chrome открыт, вход в yappy.media выполнен).');
+};
+
 function onProjInfoOnly(){const p=cur();if(p.yappy){onProj();return}const set=hooppySets.find(s=>s.id===p.hooppyId);$('#projInfo').innerHTML='Набор страниц: <b>'+esc(set?set.name:'ID '+p.hooppyId)+'</b> · подписей: '+p.captions.length+' · следующая: №'+((p.nextCap%Math.max(1,p.captions.length))+1)}
 
 function updateCont(){
