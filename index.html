@@ -105,6 +105,15 @@ th{color:var(--muted);font-weight:500;font-size:12px}
         <tbody id="rows"></tbody>
       </table>
     </div>
+
+    <div class="card" id="yCard">
+      <h2>Яппи: что выложено</h2>
+      <div class="hint" id="yInfo">Проверяю расширение…</div>
+      <table>
+        <thead><tr><th>Видео</th><th>Когда</th><th>Статус</th></tr></thead>
+        <tbody id="yRows"></tbody>
+      </table>
+    </div>
   <div class="card hidden" id="watchCard">
 <h2>Слежка за публикациями</h2>
 <div class="hint" style="margin:0 0 8px">Пока вкладка открыта, сайт проверяет каждый пост через 3, 10, 20, 30, 40, 50 и 60 минут после выхода. Ошибку нужно увидеть два раза подряд, потом он перевыкладывает пост на упавшую страницу с подписью и хештегами. Не получилось — сигнал.</div>
@@ -934,6 +943,39 @@ else if(token())loadSets().then(renderUpload).catch(()=>{});
 if(token())loadLikee().then(()=>renderProjects()).catch(()=>{});
 renderWatch();setInterval(tick,20000);setTimeout(tick,3000);
 if(!token())showTab({btn:'tabSet',view:'viewSet'});
+
+/* ---------- Яппи: статусы выкладок из расширения ---------- */
+const Y_ST={recv:['принимается','#888'],wait:['ждёт','#4f6fe0'],run:['выкладывается…','#c99200'],ok:['выложено','#2fa863'],dry:['проверка ок','#2fa863'],err:['ошибка','#d6393f'],check:['проверь вручную','#e07b00']};
+const yEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let yPolling=false;
+async function yPoll(){
+  if(yPolling)return;yPolling=true;
+  const info=$('#yInfo'),body=$('#yRows');
+  try{
+    let p;
+    try{p=await yappyBridge({type:'ping'},1500)}
+    catch(e){info.textContent='Расширение «Заливатор → Яппи» не отвечает. Если оно стоит, обнови страницу (Ctrl+Shift+R); если нет, поставь версию 1.2.0.';body.innerHTML='';return}
+    let l;
+    try{l=await yappyBridge({type:'list'},5000)}
+    catch(e){info.textContent='Расширение старое'+(p.version?' (v'+p.version+')':'')+': статусы не видно. Поставь версию 1.2.0 (chrome://extensions → обновить).';body.innerHTML='';return}
+    const jobs=(l.jobs||[]).sort((a,b)=>b.when-a.when);
+    const cnt={};jobs.forEach(j=>{cnt[j.state]=(cnt[j.state]||0)+1});
+    info.textContent='Расширение v'+p.version+' на связи. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
+    body.innerHTML=jobs.slice(0,40).map(j=>{
+      const st=Y_ST[j.state]||[j.state,'#888'];
+      const again=(j.state==='err'||j.state==='check')?' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">ещё раз</button>':'';
+      return '<tr><td>'+yEsc(j.name)+'</td><td>'+fmt(new Date(j.when))+'</td><td><span style="background:'+st[1]+';color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">'+st[0]+'</span>'+(j.err?'<div class="hint">'+yEsc(j.err)+'</div>':'')+again+'</td></tr>';
+    }).join('');
+    document.title=(cnt.err||cnt.check?'⚠ ':'')+document.title.replace(/^⚠ /,'');
+  }finally{yPolling=false}
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('.yRetry');if(!b)return;
+  if(b.dataset.st==='check'&&!confirm('Если ролик уже вышел в Яппи, будет дубль. Повторить?'))return;
+  try{await yappyBridge({type:'retry',id:b.dataset.id},4000)}catch(x){}
+  yPoll();
+});
+setTimeout(yPoll,1000);setInterval(yPoll,8000);
 </script>
 </body>
 </html>
