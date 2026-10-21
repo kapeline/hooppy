@@ -201,6 +201,9 @@ const DEFAULT_PROJECTS=[
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
 projects=projects.filter(p=>!p.yappy);
+{const DEF_YT={rogov:'#ужинсроговым #заужиномобсудим #вквидео',rogov2:'#ужинсроговым #вквидео',zvezdy:'#шоузвезды #азаматмусагалиев #звезды #вквидео'};
+  projects.forEach(p=>{if(p.yTags==null)p.yTags=DEF_YT[p.id]||'';if(!p.yN)p.yN=1;if(!p.yM)p.yM=1});
+  store.set('projects',projects)}
 {const a=projects.find(p=>p.id==='rogov');
   if(a&&!a.migY){a.migY=1;a.name='За ужином обсудим (Петрос, мои)';a.yappyOn=true}
   if(!projects.some(p=>p.id==='rogov2')){projects.splice(1,0,{id:'rogov2',name:'Ужин с Роговым (готовые, от вк)',hooppyId:22277,match:['готовые','от вк'],captions:((a&&a.captions&&a.captions.length)?a.captions:['Полный выпуск шоу «Ужин с Роговым» — уже в VK Видео!']).slice(),firstNow:!!(a&&a.firstNow),windows:(a&&a.windows)||'09:00-14:00, 15:00-21:00',nextCap:0})}
@@ -276,6 +279,8 @@ function renderProjects(){
       <label class="row" style="margin-top:10px"><input type="checkbox" data-k="firstNow" ${p.firstNow?'checked':''}> первое видео по умолчанию — сразу</label>
       <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="likeeOn" ${p.likeeOn?'checked':''}> дублировать в Лайк отдельным постом (только на страницу Лайка)</label>
       <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="yappyOn" ${p.yappyOn?'checked':''}> ещё и выкладывать в Яппи (через расширение «Заливатор → Яппи»), с тем же временем и подписью</label>
+      <div class="row" style="margin-top:10px;gap:8px;align-items:center"><span class="hint">Яппи-аккаунт этого браузера: №</span><input type="number" min="1" data-k="yN" value="${p.yN||1}" style="width:70px"><span class="hint">из</span><input type="number" min="1" data-k="yM" value="${p.yM||1}" style="width:70px"><span class="hint grow">Если аккаунтов несколько, каждый берёт только свои видео (по номеру в имени файла), остальные идут другим.</span></div>
+      <label>Хэштеги для Яппи (через пробел; идут после подписи, всё вместе не больше 150 символов)</label><input type="text" data-k="yTags" value="${esc(p.yTags||'')}">
       ${p.likeeOn?`<label>Страница Лайка в Хуппи ${likeePages.length?'':'<span class="pill">страницы Лайка не найдены — подключи Лайк в Хуппи и обнови сайт</span>'}</label><select data-k="likeePageId"><option value="">— выбери страницу —</option>${likeePages.map(x=>`<option value="${x.id}" ${x.id===p.likeePageId?'selected':''}>${esc(x.name)}</option>`).join('')}</select><label>Окна времени для Лайка (пусто — то же время, что и у основного поста)</label><input type="text" data-k="likeeWindows" value="${esc(p.likeeWindows||'')}" placeholder="например 08:00-10:00, 19:00-22:00">`:''}
       <div class="row" style="margin-top:10px"><span class="hint grow">Следующая подпись по кругу: №${(p.nextCap%Math.max(1,p.captions.length))+1}</span>
       <button class="ghost small" data-act="reset">Сбросить круг</button>
@@ -288,6 +293,7 @@ function renderProjects(){
       else if(k==='likeeOn'){p.likeeOn=el.checked;saveProjects();renderProjects();return}
       else if(k==='likeePageId')p.likeePageId=el.value?Number(el.value):null;
       else if(k==='yappyOn')p.yappyOn=el.checked;
+      else if(k==='yN'||k==='yM'){p[k]=Math.max(1,parseInt(el.value)||1);if((p.yN||1)>(p.yM||1))p.yN=p.yM;saveProjects();renderProjects();return}
       else p[k]=el.value;
       saveProjects();
     });
@@ -438,10 +444,17 @@ $('#btnPlan').onclick=()=>{
     q.caption=p.captions[(p.nextCap+i)%p.captions.length];
     q.state='wait';q.err=null;
   });
+  todo.forEach(q=>{q.yWhen=null});
+  let yMineN=0;
+  if((p.yM||1)>1){
+    const mine=todo.filter(q=>yMine(p,q));yMineN=mine.length;
+    if(mine.length){const yt=makeTimes(mine.length,p.firstNow,w,planOpts());mine.forEach((q,i)=>{q.yWhen=yt[i]})}
+  }
   planned=true;
   $('#btnGo').classList.remove('hidden');
   $('#btnGo').disabled=p.yappy?false:(!p.hooppyId||!token()||(p.likeeOn&&!p.likeePageId));
   msg.textContent=p.yappy?'Проверь расписание ниже. Если всё ок — «Отправить в Яппи». Ролики уйдут в расширение, оно выложит их само в нужное время.':!token()?'Сначала вставь токен на вкладке «Доступ».':!p.hooppyId?'Выбери набор страниц Хуппи для проекта (вкладка «Проекты»).':'Проверь расписание ниже. Если всё ок — «Отправить в Хуппи». Страницу не закрывай, пока идёт загрузка.';
+  if((p.yM||1)>1)msg.textContent+=' Яппи: аккаунт №'+p.yN+' из '+p.yM+' — этому аккаунту достаются '+yMineN+' из '+todo.length+' видео, они пойдут по своему расписанию, остальные уйдут в другие аккаунты.';
   renderRows();
 };
 
@@ -450,8 +463,8 @@ function renderRows(){
   $('#rows').innerHTML=queue.map((q,i)=>{
     const when=q.when?(q.when.now?'<b>сразу</b>':esc(fmt(q.when.date))):'—';
     const st={wait:['ожидает','st-wait'],run:['загрузка…','st-run'],zip:['сжатие…','st-run'],ok:['готово ✓','st-ok'],err:['ошибка','st-err']}[q.state];
-    return `<tr><td>${i+1}</td><td>${esc(q.name)}<div class="cap">${(q.file.size/1048576).toFixed(1)} МБ${q.zipInfo?' → '+q.zipInfo:''}</div></td><td>${when}${likeeWhenHtml(q)}</td>
-      <td class="cap">${q.caption?esc(q.caption):'—'}</td>
+    return `<tr><td>${i+1}</td><td>${esc(q.name)}<div class="cap">${(q.file.size/1048576).toFixed(1)} МБ${q.zipInfo?' → '+q.zipInfo:''}</div></td><td>${when}${likeeWhenHtml(q)}${q.yWhen?'<div class="cap">Яппи: '+(q.yWhen.now?'сразу':esc(fmt(q.yWhen.date)))+'</div>':''}</td>
+      <td class="cap">${q.caption?esc(q.caption):'—'}${(q.caption&&cur().yappyOn&&yMine(cur(),q))?'<div class="cap" style="white-space:pre-line">Яппи: '+esc(yCaption(q.caption,cur().yTags))+'</div>':''}</td>
       <td class="${st[1]}">${st[0]}${(q.state==='run'||q.state==='zip')?`<div class="bar"><i style="width:${q.pct}%"></i></div>`:''}${q.err?`<div class="cap st-err">${esc(q.err)}</div>`:''}</td></tr>`;
   }).join('');
 }
@@ -509,11 +522,32 @@ function yappyBridge(msg,timeout){
     window.postMessage({zalY:1,reqId,...rest},location.origin);
   });
 }
+function yOwner(name,M){
+  if(M<2)return 0;
+  const base=String(name).replace(/\.[^.]+$/,'');
+  const m=base.match(/(\d+)(?!.*\d)/);
+  let n;
+  if(m)n=parseInt(m[1],10);
+  else{n=0;for(const ch of base)n=(n*31+ch.charCodeAt(0))>>>0}
+  return n%M;
+}
+function yMine(p,q){const M=Math.max(1,p.yM||1);return yOwner(q.name,M)===(((p.yN||1)-1)%M)}
+function yCaption(cap,tags){
+  let out=String(cap||'').trim();
+  for(let t of String(tags||'').split(/\s+/).filter(Boolean)){
+    if(t[0]!=='#')t='#'+t;
+    if(out.toLowerCase().includes(t.toLowerCase()))continue;
+    if((out+'\n'+t).length>150)break;
+    out+='\n'+t;
+  }
+  return out.slice(0,150);
+}
 async function yappySend(q,onPct,fileOv){
   try{await yappyBridge({type:'ping'},1500)}
   catch(e){throw new Error('Не вижу расширение «Заливатор → Яппи». Установи или включи его в Chrome и обнови эту страницу (Ctrl+Shift+R).')}
-  const when=q.when.now?Date.now():q.when.date.getTime();
-  await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:String(q.caption).slice(0,150),file:fileOv||q.file,onProgress:onPct},30*60000);
+  const p=cur(),w=q.yWhen||q.when;
+  const when=w.now?Date.now():w.date.getTime();
+  await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:yCaption(q.caption,p.yTags),file:fileOv||q.file,onProgress:onPct},30*60000);
 }
 
 $('#btnGo').onclick=async()=>{
@@ -552,7 +586,7 @@ catch(e3){if(e3.status===401)throw e3;lm=await uploadFile(fileToSend,()=>{});lre
 registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name);
 }catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
 }
-      if(p.yappyOn&&!p.yappy){
+      if(p.yappyOn&&!p.yappy&&yMine(p,q)){
         try{await yappySend(q,()=>{},fileToSend);q.yDone=true}
         catch(e5){q.err=(q.err?q.err+'; ':'')+'Яппи не принял: '+e5.message;alarm('Яппи: «'+q.name+'» не передан расширению — '+e5.message)}
       }
@@ -579,10 +613,10 @@ $('#btnYappy').onclick=async()=>{
   if(busy)return;
   if(!planned){const m0=$('#planMsg');m0.classList.remove('hidden');m0.className='msg';m0.textContent='Сначала загрузи видео и нажми «Показать расписание» — потом эта кнопка отправит их в Яппи.';return}
   const p=cur();
-  const todo=queue.filter(q=>q.when&&!q.yDone);
+  const todo=queue.filter(q=>q.when&&!q.yDone&&yMine(p,q));
   const msg=$('#planMsg');msg.classList.remove('hidden');
-  if(!todo.length){msg.className='msg';msg.textContent='Все видео из списка уже ушли в Яппи.';return}
-  if(!confirm('Отправить ТОЛЬКО в Яппи '+todo.length+' видео (в Хуппи они не пойдут)? Первое: '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
+  if(!todo.length){msg.className='msg';msg.textContent=(p.yM||1)>1?'Для этого Яппи-аккаунта (№'+p.yN+' из '+p.yM+') больше нет видео в списке.':'Все видео из списка уже ушли в Яппи.';return}
+  if(!confirm('Отправить ТОЛЬКО в Яппи '+todo.length+' видео (в Хуппи они не пойдут)? Первое: '+((todo[0].yWhen||todo[0].when).now?'сразу':fmt((todo[0].yWhen||todo[0].when).date))+'.'))return;
   busy=true;$('#btnGo').disabled=true;$('#btnYappy').disabled=true;$('#btnPlan').disabled=true;
   let done=0,failed=0,stop=false;
   for(const q of todo){
