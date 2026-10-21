@@ -108,6 +108,7 @@ th{color:var(--muted);font-weight:500;font-size:12px}
 
     <div class="card" id="yCard">
       <h2>Яппи: что выложено</h2>
+      <div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="hint">В Яппи в этом браузере открыт аккаунт:</span><select id="yAccSel"></select></div>
       <div class="hint" id="yInfo">Проверяю расширение…</div>
       <table>
         <thead><tr><th>Видео</th><th>Когда</th><th>Статус</th></tr></thead>
@@ -201,8 +202,10 @@ const DEFAULT_PROJECTS=[
 ];
 let projects=store.get('projects',null)||DEFAULT_PROJECTS;
 projects=projects.filter(p=>!p.yappy);
-{const DEF_YT={rogov:'#ужинсроговым #заужиномобсудим #вквидео',rogov2:'#ужинсроговым #вквидео',zvezdy:'#шоузвезды #азаматмусагалиев #звезды #вквидео'};
-  projects.forEach(p=>{if(p.yTags==null)p.yTags=DEF_YT[p.id]||'';if(!p.yN)p.yN=1;if(!p.yM)p.yM=1});
+const Y_ACCS=[['znp','Звёзды на повторе (ЗНП)'],['eco','Есть что обсудить (ЕЧО)'],['zuo','За ужином обсудим (ЗУО)']];
+const yAccName=id=>(Y_ACCS.find(a=>a[0]===id)||[0,''])[1];
+{const DEF_ACC={rogov:'zuo',zvezdy:'znp'};const DEF_YT={rogov:'#ужинсроговым #заужиномобсудим #вквидео',rogov2:'#ужинсроговым #вквидео',zvezdy:'#шоузвезды #азаматмусагалиев #звезды #вквидео'};
+  projects.forEach(p=>{if(p.yTags==null)p.yTags=DEF_YT[p.id]||'';if(p.yAcc==null)p.yAcc=DEF_ACC[p.id]||'';if(!p.yN)p.yN=1;if(!p.yM)p.yM=1});
   store.set('projects',projects)}
 {const a=projects.find(p=>p.id==='rogov');
   if(a&&!a.migY){a.migY=1;a.name='За ужином обсудим (Петрос, мои)';a.yappyOn=true}
@@ -280,6 +283,7 @@ function renderProjects(){
       <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="likeeOn" ${p.likeeOn?'checked':''}> дублировать в Лайк отдельным постом (только на страницу Лайка)</label>
       <label class="row" style="margin-top:10px;color:var(--ink);font-size:14px"><input type="checkbox" data-k="yappyOn" ${p.yappyOn?'checked':''}> ещё и выкладывать в Яппи (через расширение «Заливатор → Яппи»), с тем же временем и подписью</label>
       <div class="row" style="margin-top:10px;gap:8px;align-items:center"><span class="hint">Яппи-аккаунт этого браузера: №</span><input type="number" min="1" data-k="yN" value="${p.yN||1}" style="width:70px"><span class="hint">из</span><input type="number" min="1" data-k="yM" value="${p.yM||1}" style="width:70px"><span class="hint grow">Если аккаунтов несколько, каждый берёт только свои видео (по номеру в имени файла), остальные идут другим.</span></div>
+      <label>Яппи-аккаунт этого проекта (в другие аккаунты проект не отправится)</label><select data-k="yAcc"><option value="">— не выбран —</option>${Y_ACCS.map(a=>`<option value="${a[0]}" ${p.yAcc===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select>
       <label>Хэштеги для Яппи (через пробел; идут после подписи, всё вместе не больше 150 символов)</label><input type="text" data-k="yTags" value="${esc(p.yTags||'')}">
       ${p.likeeOn?`<label>Страница Лайка в Хуппи ${likeePages.length?'':'<span class="pill">страницы Лайка не найдены — подключи Лайк в Хуппи и обнови сайт</span>'}</label><select data-k="likeePageId"><option value="">— выбери страницу —</option>${likeePages.map(x=>`<option value="${x.id}" ${x.id===p.likeePageId?'selected':''}>${esc(x.name)}</option>`).join('')}</select><label>Окна времени для Лайка (пусто — то же время, что и у основного поста)</label><input type="text" data-k="likeeWindows" value="${esc(p.likeeWindows||'')}" placeholder="например 08:00-10:00, 19:00-22:00">`:''}
       <div class="row" style="margin-top:10px"><span class="hint grow">Следующая подпись по кругу: №${(p.nextCap%Math.max(1,p.captions.length))+1}</span>
@@ -522,6 +526,13 @@ function yappyBridge(msg,timeout){
     window.postMessage({zalY:1,reqId,...rest},location.origin);
   });
 }
+function yAccBlock(p){
+  if(!p.yAcc)return 'У проекта «'+p.name+'» не выбран Яппи-аккаунт (вкладка «Проекты»).';
+  const mine=store.get('yAcc','');
+  if(!mine)return 'Выбери внизу в карточке «Яппи», какой аккаунт Яппи открыт в этом браузере.';
+  if(mine!==p.yAcc)return 'Проект «'+p.name+'» идёт в Яппи-аккаунт «'+yAccName(p.yAcc)+'», а в этом браузере открыт «'+yAccName(mine)+'». В Яппи не отправляю, чтобы не выложить не туда. Открой Заливатор в браузере с нужным аккаунтом.';
+  return '';
+}
 function yOwner(name,M){
   if(M<2)return 0;
   const base=String(name).replace(/\.[^.]+$/,'');
@@ -546,6 +557,7 @@ async function yappySend(q,onPct,fileOv){
   try{await yappyBridge({type:'ping'},1500)}
   catch(e){throw new Error('Не вижу расширение «Заливатор → Яппи». Установи или включи его в Chrome и обнови эту страницу (Ctrl+Shift+R).')}
   const p=cur(),w=q.yWhen||q.when;
+  {const bad=yAccBlock(p);if(bad)throw new Error(bad)}
   const when=w.now?Date.now():w.date.getTime();
   await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:q.name,when,caption:yCaption(q.caption,p.yTags),file:fileOv||q.file,onProgress:onPct},30*60000);
 }
@@ -555,7 +567,9 @@ $('#btnGo').onclick=async()=>{
   const p=cur();
   const todo=queue.filter(q=>q.state!=='ok'&&q.when);
   if(!todo.length)return;
-  if(!confirm((p.yappy?'Поставить в расписание Яппи ':'Отправить в Хуппи ')+todo.length+' видео? Первое будет опубликовано '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
+  let skipY=false;
+  if(p.yappyOn&&!p.yappy){const bad=yAccBlock(p);if(bad){if(!confirm(bad+'\n\nВ Яппи эти видео НЕ пойдут, только в Хуппи. Продолжить?'))return;skipY=true}}
+  if(!confirm((p.yappy?'Поставить в расписание Яппи ':'Отправить в Хуппи '+((p.yappyOn&&!skipY)?'и в Яппи ('+yAccName(p.yAcc)+') ':''))+todo.length+' видео? Первое будет опубликовано '+(todo[0].when.now?'сразу':fmt(todo[0].when.date))+'.'))return;
   busy=true;$('#btnGo').disabled=true;$('#btnPlan').disabled=true;
   let done=0;
   for(const q of todo){
@@ -586,7 +600,7 @@ catch(e3){if(e3.status===401)throw e3;lm=await uploadFile(fileToSend,()=>{});lre
 registerWatch(q.name+' (Лайк)',lp,lres&&lres.id,lwhen,q.caption,lm,0,p.name);
 }catch(e4){q.err=(q.err?q.err+'; ':'')+'Лайк не создан: '+e4.message;alarm('Лайк-пост не создан для «'+q.name+'»: '+e4.message)}
 }
-      if(p.yappyOn&&!p.yappy&&yMine(p,q)){
+      if(p.yappyOn&&!p.yappy&&!skipY&&yMine(p,q)){
         try{await yappySend(q,()=>{},fileToSend);q.yDone=true}
         catch(e5){q.err=(q.err?q.err+'; ':'')+'Яппи не принял: '+e5.message;alarm('Яппи: «'+q.name+'» не передан расширению — '+e5.message)}
       }
@@ -613,10 +627,11 @@ $('#btnYappy').onclick=async()=>{
   if(busy)return;
   if(!planned){const m0=$('#planMsg');m0.classList.remove('hidden');m0.className='msg';m0.textContent='Сначала загрузи видео и нажми «Показать расписание» — потом эта кнопка отправит их в Яппи.';return}
   const p=cur();
+  {const bad=yAccBlock(p);if(bad){const m1=$('#planMsg');m1.classList.remove('hidden');m1.className='msg st-err';m1.textContent=bad;return}}
   const todo=queue.filter(q=>q.when&&!q.yDone&&yMine(p,q));
   const msg=$('#planMsg');msg.classList.remove('hidden');
   if(!todo.length){msg.className='msg';msg.textContent=(p.yM||1)>1?'Для этого Яппи-аккаунта (№'+p.yN+' из '+p.yM+') больше нет видео в списке.':'Все видео из списка уже ушли в Яппи.';return}
-  if(!confirm('Отправить ТОЛЬКО в Яппи '+todo.length+' видео (в Хуппи они не пойдут)? Первое: '+((todo[0].yWhen||todo[0].when).now?'сразу':fmt((todo[0].yWhen||todo[0].when).date))+'.'))return;
+  if(!confirm('Отправить ТОЛЬКО в Яппи ('+yAccName(p.yAcc)+') '+todo.length+' видео (в Хуппи они не пойдут)? Первое: '+((todo[0].yWhen||todo[0].when).now?'сразу':fmt((todo[0].yWhen||todo[0].when).date))+'.'))return;
   busy=true;$('#btnGo').disabled=true;$('#btnYappy').disabled=true;$('#btnPlan').disabled=true;
   let done=0,failed=0,stop=false;
   for(const q of todo){
@@ -994,7 +1009,7 @@ async function yPoll(){
     catch(e){info.textContent='Расширение старое'+(p.version?' (v'+p.version+')':'')+': статусы не видно. Поставь версию 1.2.0 (chrome://extensions → обновить).';body.innerHTML='';return}
     const jobs=(l.jobs||[]).sort((a,b)=>b.when-a.when);
     const cnt={};jobs.forEach(j=>{cnt[j.state]=(cnt[j.state]||0)+1});
-    info.textContent='Расширение v'+p.version+' на связи. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
+    info.textContent='Расширение v'+p.version+' на связи. Яппи-аккаунт этого браузера: '+(yAccName(store.get('yAcc',''))||'НЕ ВЫБРАН')+'. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
     body.innerHTML=jobs.slice(0,40).map(j=>{
       const st=Y_ST[j.state]||[j.state,'#888'];
       const again=(j.state==='err'||j.state==='check')?' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">ещё раз</button>':'';
@@ -1009,6 +1024,7 @@ document.addEventListener('click',async e=>{
   try{await yappyBridge({type:'retry',id:b.dataset.id},4000)}catch(x){}
   yPoll();
 });
+{const sel=$('#yAccSel');sel.innerHTML='<option value="">— выбери —</option>'+Y_ACCS.map(a=>'<option value="'+a[0]+'">'+a[1]+'</option>').join('');sel.value=store.get('yAcc','');sel.onchange=()=>{store.set('yAcc',sel.value);yPoll()}}
 setTimeout(yPoll,1000);setInterval(yPoll,8000);
 </script>
 </body>
