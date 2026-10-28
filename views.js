@@ -1,5 +1,6 @@
-/* Просмотры по проектам и соцсетям. Данные берутся из views.json (снимок),
-   проект/сеть/период выбираются здесь. Хуппи просмотры не отдаёт. */
+/* Просмотры по проектам и соцсетям (каждый проект отдельно).
+   Данные берутся из views.json (снимок), проект/сеть/период выбираются здесь.
+   Хуппи просмотры не отдаёт. */
 (function(){
 'use strict';
 var host=document.querySelector('#viewSt');
@@ -8,16 +9,24 @@ var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'
 var pad=function(n){return String(n).padStart(2,'0')};
 var iso=function(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
 var num=function(n){return Number(n||0).toLocaleString('ru-RU')};
-var ORDER=['YouTube','Instagram','TikTok','ВКонтакте','Яппи'];
+var dm=function(d){return d.slice(8,10)+'.'+d.slice(5,7)};
+/* как называется сеть в данных -> как показываем */
+var LABEL={'Instagram':'Reels','ВКонтакте':'Клипы ВК','YouTube':'Shorts','TikTok':'TikTok','Яппи':'Яппи','Likee':'Лайк'};
+var ORDER=['Instagram','ВКонтакте','YouTube','TikTok','Яппи','Likee'];
+var lab=function(n){return LABEL[n]||n};
 var lsGet=function(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 var lsSet=function(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 
 var data=null,items=[],nets=[],projs=[];
 
+/* старую общую статистику «Публикации по соцсетям» (все проекты вместе) прячем */
+Array.prototype.slice.call(host.children).forEach(function(c){c.classList.add('hidden')});
+
 var card=document.createElement('div');
-card.className='card';card.id='vwCard';
+card.id='vwCard';
 card.innerHTML=
-'<h2>Просмотры по проектам и соцсетям</h2>'+
+'<div class="card">'+
+'<h2>Просмотры по проектам</h2>'+
 '<div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">'+
 '<label style="margin:0">Проект<br><select id="vwProj" style="min-width:220px"></select></label>'+
 '<label style="margin:0">С даты<br><input type="date" id="vwFrom"></label>'+
@@ -34,14 +43,9 @@ card.innerHTML=
 '</div>'+
 '<div class="row" id="vwNets" style="margin-top:12px;gap:14px"></div>'+
 '<div class="msg" id="vwMsg">Загружаю данные…</div>'+
-'<div id="vwBox" class="hidden">'+
-'<div style="overflow-x:auto"><table style="margin-top:12px" id="vwPivot"></table></div>'+
-'<h2 style="margin-top:18px;font-size:15px">Лучшие видео за период</h2>'+
-'<table><thead><tr><th>Проект</th><th>Сеть</th><th>Вышло</th><th>Просмотры</th><th></th></tr></thead><tbody id="vwTop"></tbody></table>'+
-'<h2 style="margin-top:18px;font-size:15px">По дням выхода</h2>'+
-'<table><thead><tr><th>День</th><th>Публикаций</th><th>Просмотры</th></tr></thead><tbody id="vwDays"></tbody></table>'+
 '</div>'+
-'<div class="hint" id="vwNote"></div>';
+'<div id="vwProjects"></div>'+
+'<div class="hint" id="vwNote" style="margin:0 4px 14px"></div>';
 host.insertBefore(card,host.firstChild);
 
 var $q=function(s){return card.querySelector(s)};
@@ -59,81 +63,71 @@ function selectedNets(){
 return Array.prototype.slice.call(card.querySelectorAll('#vwNets input:checked')).map(function(i){return i.value});
 }
 
+/* один проект — один отдельный блок */
+function projectBlock(p,list,ns){
+var withV=list.filter(function(i){return i.v!=null});
+var total=withV.reduce(function(a,i){return a+i.v},0);
+var h='<div class="card"><h2>'+esc(p)+'</h2>';
+h+='<div class="cap" style="margin-bottom:6px">Публикаций: '+list.length+' · просмотров: <b style="color:var(--ink)">'+num(total)+'</b>'+(withV.length?' · в среднем на публикацию: '+num(Math.round(total/withV.length)):'')+'</div>';
+h+='<table><thead><tr><th>Соцсеть</th><th>Публикаций</th><th>Просмотры</th><th>В среднем</th></tr></thead><tbody>';
+ns.forEach(function(n){
+var l=list.filter(function(i){return i.n===n});
+if(!l.length){h+='<tr><td>'+esc(lab(n))+'</td><td class="cap">0</td><td class="cap">—</td><td class="cap">—</td></tr>';return}
+var wv=l.filter(function(i){return i.v!=null}),s=wv.reduce(function(a,i){return a+i.v},0);
+h+='<tr><td>'+esc(lab(n))+'</td><td>'+l.length+'</td><td><b>'+(wv.length?num(s):'нет данных')+'</b>'+(wv.length&&wv.length<l.length?'<span class="cap"> (без данных: '+(l.length-wv.length)+')</span>':'')+'</td><td>'+(wv.length?num(Math.round(s/wv.length)):'—')+'</td></tr>';
+});
+h+='</tbody></table>';
+var top=withV.slice().sort(function(a,b){return b.v-a.v}).slice(0,5);
+if(top.length){
+h+='<div class="cap" style="margin-top:12px">Лучшие видео</div><table><tbody>';
+h+=top.map(function(i){return '<tr><td>'+esc(lab(i.n))+'</td><td>'+esc(dm(i.d))+'</td><td><b>'+num(i.v)+'</b></td><td><a href="'+esc(i.u)+'" target="_blank" rel="noopener">открыть</a></td></tr>'}).join('');
+h+='</tbody></table>';
+}
+var days={};
+list.forEach(function(i){var d=days[i.d]||(days[i.d]={c:0,v:0});d.c++;d.v+=i.v||0});
+h+='<details style="margin-top:10px"><summary class="cap" style="cursor:pointer">По дням выхода</summary><table><thead><tr><th>День</th><th>Публикаций</th><th>Просмотры</th></tr></thead><tbody>';
+h+=Object.keys(days).sort().reverse().map(function(d){return '<tr><td>'+esc(dm(d)+'.'+d.slice(0,4))+'</td><td>'+days[d].c+'</td><td>'+num(days[d].v)+'</td></tr>'}).join('');
+h+='</tbody></table></details></div>';
+return h;
+}
+
 function render(){
 if(!data)return;
-var msg=$q('#vwMsg'),box=$q('#vwBox');
+var msg=$q('#vwMsg'),box=$q('#vwProjects');
 var from=$q('#vwFrom').value,to=$q('#vwTo').value,proj=$q('#vwProj').value,ns=selectedNets();
 lsSet('vwSel',{proj:proj,from:from,to:to,nets:ns});
-if(from&&to&&to<from){msg.className='msg st-err';msg.textContent='Дата «по» раньше даты «с».';box.classList.add('hidden');return}
-if(!ns.length){msg.className='msg';msg.textContent='Отметь хотя бы одну соцсеть.';box.classList.add('hidden');return}
+if(from&&to&&to<from){msg.className='msg st-err';msg.textContent='Дата «по» раньше даты «с».';box.innerHTML='';return}
+if(!ns.length){msg.className='msg';msg.textContent='Отметь хотя бы одну соцсеть.';box.innerHTML='';return}
 var list=items.filter(function(i){
 return (!from||i.d>=from)&&(!to||i.d<=to)&&(!proj||i.p===proj)&&ns.indexOf(i.n)>=0;
 });
-if(!list.length){msg.className='msg';msg.textContent='За выбранный период видео в снимке нет.';box.classList.add('hidden');renderNote(to);return}
-var withV=list.filter(function(i){return i.v!=null});
-var total=withV.reduce(function(a,i){return a+i.v},0);
-var missing=list.length-withV.length;
+var shown=(proj?[proj]:projs).filter(function(p){return list.some(function(i){return i.p===p})});
 msg.className='msg';
-msg.textContent='Публикаций: '+list.length+', просмотров: '+num(total)+(withV.length?', в среднем на публикацию: '+num(Math.round(total/withV.length)):'')+(missing?'. Без данных по просмотрам: '+missing+' (помечены *).':'.');
-box.classList.remove('hidden');
-
-// сводная: проекты x сети
-var pj=[];list.forEach(function(i){if(pj.indexOf(i.p)<0)pj.push(i.p)});
-var cell={},rowT={},colT={},cnt={},miss={};
-list.forEach(function(i){
-var k=i.p+'\u0001'+i.n;
-cell[k]=(cell[k]||0)+(i.v||0);cnt[k]=(cnt[k]||0)+1;if(i.v==null)miss[k]=(miss[k]||0)+1;
-rowT[i.p]=(rowT[i.p]||0)+(i.v||0);colT[i.n]=(colT[i.n]||0)+(i.v||0);
-});
-pj.sort(function(a,b){return (rowT[b]||0)-(rowT[a]||0)});
-var cols=ns.filter(function(n){return colT[n]!==undefined});
-var h='<thead><tr><th>Проект</th>'+cols.map(function(n){return '<th>'+esc(n)+'</th>'}).join('')+'<th>Итого</th></tr></thead><tbody>';
-pj.forEach(function(p){
-h+='<tr><td>'+esc(p)+'</td>'+cols.map(function(n){
-var k=p+'\u0001'+n;
-if(!cnt[k])return '<td class="cap">—</td>';
-if(miss[k]===cnt[k])return '<td class="cap">нет данных<div class="cap">'+cnt[k]+' шт.</div></td>';
-return '<td><b>'+num(cell[k])+(miss[k]?'*':'')+'</b><div class="cap">'+cnt[k]+' шт.</div></td>';
-}).join('')+'<td><b>'+num(rowT[p])+'</b></td></tr>';
-});
-if(pj.length>1){
-h+='<tr><td><b>Итого</b></td>'+cols.map(function(n){return '<td><b>'+num(colT[n])+'</b></td>'}).join('')+'<td><b>'+num(total)+'</b></td></tr>';
-}
-h+='</tbody>';
-$q('#vwPivot').innerHTML=h;
-
-// лучшие видео
-var top=withV.slice().sort(function(a,b){return b.v-a.v}).slice(0,10);
-$q('#vwTop').innerHTML=top.map(function(i){
-return '<tr><td>'+esc(i.p)+'</td><td>'+esc(i.n)+'</td><td>'+esc(i.d.slice(8,10)+'.'+i.d.slice(5,7))+'</td><td><b>'+num(i.v)+'</b></td><td><a href="'+esc(i.u)+'" target="_blank" rel="noopener">открыть</a></td></tr>';
-}).join('');
-
-// по дням
-var days={};
-list.forEach(function(i){var d=days[i.d]||(days[i.d]={c:0,v:0});d.c++;d.v+=i.v||0});
-$q('#vwDays').innerHTML=Object.keys(days).sort().reverse().map(function(d){
-return '<tr><td>'+esc(d.slice(8,10)+'.'+d.slice(5,7)+'.'+d.slice(0,4))+'</td><td>'+days[d].c+'</td><td>'+num(days[d].v)+'</td></tr>';
-}).join('');
+msg.textContent=(from||to?('Период: '+(from?from.split('-').reverse().join('.'):'начало')+' — '+(to?to.split('-').reverse().join('.'):'сейчас')):'За всё время')+'. Каждый проект посчитан отдельно.';
+if(!shown.length){box.innerHTML='<div class="card"><div class="cap">За выбранный период видео в снимке нет.</div></div>';renderNote(to);return}
+box.innerHTML=shown.map(function(p){return projectBlock(p,list.filter(function(i){return i.p===p}),ns)}).join('');
 renderNote(to);
 }
 
 function renderNote(to){
-var note='Просмотры взяты из самих соцсетей снимком на '+data.updated.split('-').reverse().join('.')+' (Хуппи просмотры не отдаёт). Видео попадает в период по дате выхода поста. Список видео берётся из Хуппи, поэтому старше первых постов, сделанных через Заливатор, данных нет.';
-if(to&&to>data.updated)note+=' Выбранный период заканчивается позже даты снимка: чтобы обновить цифры, попроси Claude пересобрать просмотры.';
+var note='Просмотры взяты из самих соцсетей снимком на '+data.updated.split('-').reverse().join('.')+' (Хуппи просмотры не отдаёт). Видео попадает в период по дате выхода поста. Список видео берётся из Хуппи, поэтому раньше первых постов, сделанных через Заливатор, данных нет.';
+if(to&&to>data.updated)note+=' Выбранный период заканчивается позже даты снимка.';
 $q('#vwNote').textContent=note;
 }
 
 function init(){
 var sel=lsGet('vwSel',null)||{};
-items=data.items.map(function(r){return {p:r[0],n:r[1],d:r[2],v:r[3],u:r[4]}});
+/* только проектные публикации; репосты на стену ВК без проекта не считаем */
+items=data.items.filter(function(r){return r[0]!=='Без проекта'}).map(function(r){return {p:r[0],n:r[1],d:r[2],v:r[3],u:r[4]}});
 projs=[];nets=[];
 items.forEach(function(i){if(projs.indexOf(i.p)<0)projs.push(i.p);if(nets.indexOf(i.n)<0)nets.push(i.n)});
+ORDER.forEach(function(n){if(nets.indexOf(n)<0&&n!=='Likee')nets.push(n)}); /* Яппи показываем всегда */
 nets.sort(function(a,b){var x=ORDER.indexOf(a),y=ORDER.indexOf(b);return (x<0?99:x)-(y<0?99:y)});
-$q('#vwProj').innerHTML='<option value="">Все проекты</option>'+projs.map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>'}).join('');
+$q('#vwProj').innerHTML='<option value="">Все проекты (по отдельности)</option>'+projs.map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>'}).join('');
 if(sel.proj&&projs.indexOf(sel.proj)>=0)$q('#vwProj').value=sel.proj;
 $q('#vwNets').innerHTML=nets.map(function(n){
 var on=!sel.nets||sel.nets.indexOf(n)>=0;
-return '<label class="row" style="margin:0;color:var(--ink);font-size:14px;gap:6px"><input type="checkbox" value="'+esc(n)+'"'+(on?' checked':'')+'> '+esc(n)+'</label>';
+return '<label class="row" style="margin:0;color:var(--ink);font-size:14px;gap:6px"><input type="checkbox" value="'+esc(n)+'"'+(on?' checked':'')+'> '+esc(lab(n))+'</label>';
 }).join('');
 if(sel.from!=null&&(sel.from||sel.to)){$q('#vwFrom').value=sel.from||'';$q('#vwTo').value=sel.to||''}
 else if(sel.from===''&&sel.to===''){/* всё время */}
