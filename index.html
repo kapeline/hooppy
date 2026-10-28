@@ -1027,6 +1027,7 @@ document.addEventListener('click',async e=>{
 {const sel=$('#yAccSel');sel.innerHTML='<option value="">— выбери —</option>'+Y_ACCS.map(a=>'<option value="'+a[0]+'">'+a[1]+'</option>').join('');sel.value=store.get('yAcc','');sel.onchange=()=>{store.set('yAcc',sel.value);yPoll()}}
 setTimeout(yPoll,1000);setInterval(yPoll,8000);
 </script>
+<script src="views.js"></script>
 </body>
 </html>
 
