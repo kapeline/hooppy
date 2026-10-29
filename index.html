@@ -824,17 +824,31 @@ async function recoverCaption(w){
 }
 /* Перевыкладка упавшей сети: копия ИСХОДНОГО поста (подпись + теги + настройки «Клипы/Reels/Shorts»),
    только на упавшие страницы. На стену ВК и без тегов не публикуем никогда. */
+const BUILD='2026-10-29b';
 const VK_SIDS=[1,12];
 async function buildRepost(w,pages){
   const j=await api('/posts/'+w.postId+'/edit');
-  const texts=(j.texts||[]).map(t=>({text:t.text,source_id:t.source_id})).filter(t=>html2txt(t.text));
+  let texts=(j.texts||[]).map(t=>({text:t.text,source_id:t.source_id})).filter(t=>html2txt(t.text));
   if(!texts.length)throw new Error('у исходного поста нет подписи — без подписи и тегов не перевыкладываю');
   const st=(j.attachments||[]).find(a=>a.type==='settings');
   const data=st&&st.data?JSON.parse(JSON.stringify(st.data)):{};
   delete data.id;delete data.post_id;
+  /* настройки и теги проекта: у ещё не обработанного поста Хуппи добавляет их при выходе, у копии — нет */
+  const projId=j.project_id||((store.get('projects',[]).find(p=>p.name===w.proj))||{}).hooppyId;
+  let pj=null;
+  if(projId){try{pj=await api('/posts/projects/'+projId+'/edit')}catch(e){if(e.status===401)throw e}}
+  if(pj){
+    ['publish_as_clips','publish_as_shorts','share_reels_to_feed'].forEach(k=>{if(pj[k]&&data[k]===undefined)data[k]=true});
+    const hs=pj.posts_hashtags&&pj.posts_hashtags.hashtags;
+    if(hs&&!texts.some(t=>(html2txt(t.text).match(TAG_RE)||[]).length)){
+      const tags=(String(hs).match(TAG_RE)||[]).slice(0,Number(pj.posts_hashtags.max_amount)||5).join(' ');
+      if(tags)texts=texts.map((t,i)=>i===0?{text:t.text.replace(/<\/p>\s*$/,'<br><br>'+tags+'</p>'),source_id:t.source_id}:t);
+    }
+  }
   if(Object.keys(pages).some(s=>VK_SIDS.includes(Number(s)))){
     data.publish_as_clips=true;data.publish_only_in_videos=true;data.not_publish_in_videos=false;
   }
+  if(Object.keys(pages).some(s=>VK_SIDS.includes(Number(s)))&&!data.publish_as_clips)throw new Error('ВК не в клипы — не публикую');
   return {texts,settings:data};
 }
 async function createRepost(pages,rp,media){
@@ -898,7 +912,14 @@ async function checkWatch(w,final){
   }
 }
 let checking=false;
+let lastVer=0;
+async function verGuard(){
+  if(Date.now()-lastVer<120000)return;lastVer=Date.now();
+  try{const t=await (await fetch(location.pathname,{cache:'no-store'})).text();
+    if(t.indexOf("const BUILD='"+BUILD+"'")<0){if(!busy&&!queue.length){alarm('Сайт обновился — страница перезагружается');setTimeout(()=>location.reload(),3000)}else alarm('Сайт обновился — как закончишь заливку, перезагрузи страницу (Cmd+Shift+R)')}}catch(e){}
+}
 async function tick(){
+  verGuard();
   if(checking||!token())return;
   checking=true;
   try{
