@@ -156,3 +156,15 @@ $q('#psProj').onchange=render;
 var sv=lsGet('psSel',null);
 if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else setRange('7');
 })();
+
+/* Автоперевыкладка отключена: раньше она создавала новый пост в обход шаблона проекта,
+   из-за чего ролик уходил на СТЕНУ ВК и без тегов. Теперь при сбое только тревога —
+   перевыкладывать нужно из Хуппи с включёнными «Публиковать в клипы» и тегами. */
+if (typeof window.repost === 'function') {
+  window.repost = async function (w, failing) {
+    w.state = 'alarm';
+    failing.forEach(function (k) { w.st[k] = 'dead'; });
+    w.note = 'не вышло — автоперевыкладку отключил (она шла на стену ВК и без тегов)';
+    alarm('«' + w.label + '»: не вышло. Автоперевыкладки больше нет, чтобы не было постов на стене ВК. Выложи в клипы вручную из Хуппи.');
+  };
+}
