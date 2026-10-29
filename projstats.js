@@ -156,3 +156,32 @@ $q('#psProj').onchange=render;
 var sv=lsGet('psSel',null);
 if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else setRange('7');
 })();
+
+/* Слежка: ручной перенос постов в Хуппи не считается сбоем (2026-10-29) */
+(function(){
+  var orig=window.checkWatch;
+  if(typeof orig!=='function'||orig.__moved)return;
+  function msk(p){var d=String(p.date||'').split('.');if(d.length<3)return NaN;return Date.UTC(+d[2],+d[1]-1,+d[0],+p.hours-3,+p.minutes)}
+  var wrapped=async function(w,final){
+    try{
+      var j=await api('/posts/'+w.postId+'/edit');
+      if(j&&Number(j.publication_when_type)===2&&j.publication_date){
+        var t=msk(j.publication_date);
+        if(isFinite(t)&&Math.abs(t-w.at)>120000&&t>Date.now()){
+          w.at=t;w.k=0;w.st={};w.fail={};w.state='watch';w.note='';
+          return;
+        }
+      }
+    }catch(e){if(e&&e.status===401)throw e}
+    return orig(w,final);
+  };
+  wrapped.__moved=true;
+  window.checkWatch=wrapped;
+  try{
+    if(!localStorage.getItem('zal_wfix1')){
+      watch.forEach(function(w){if(/не подтвердилась/.test(w.note||'')){w.state='watch';w.note='';w.k=0;w.st={};w.fail={}}});
+      localStorage.setItem('zal_wfix1','1');
+      saveWatch();renderWatch();
+    }
+  }catch(e){}
+})();
