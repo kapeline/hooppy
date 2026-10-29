@@ -822,6 +822,27 @@ async function recoverCaption(w){
   }catch(e){}
   return base;
 }
+/* Перевыкладка упавшей сети: копия ИСХОДНОГО поста (подпись + теги + настройки «Клипы/Reels/Shorts»),
+   только на упавшие страницы. На стену ВК и без тегов не публикуем никогда. */
+const VK_SIDS=[1,12];
+async function buildRepost(w,pages){
+  const j=await api('/posts/'+w.postId+'/edit');
+  const texts=(j.texts||[]).map(t=>({text:t.text,source_id:t.source_id})).filter(t=>html2txt(t.text));
+  if(!texts.length)throw new Error('у исходного поста нет подписи — без подписи и тегов не перевыкладываю');
+  const st=(j.attachments||[]).find(a=>a.type==='settings');
+  const data=st&&st.data?JSON.parse(JSON.stringify(st.data)):{};
+  delete data.id;delete data.post_id;
+  if(Object.keys(pages).some(s=>VK_SIDS.includes(Number(s)))){
+    data.publish_as_clips=true;data.publish_only_in_videos=true;data.not_publish_in_videos=false;
+  }
+  return {texts,settings:data};
+}
+async function createRepost(pages,rp,media){
+  const body={publication_how_type:1,publication_when_type:1,selected_pages_by_source_ids:pages,
+    texts:rp.texts,
+    attachments:[{type:'photos',data:[media]},{type:'settings',data:rp.settings}]};
+  return api('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+}
 async function repost(w,failing){
   const pages={};
   failing.forEach(k=>{const [sid,pid]=k.split(':');(pages[sid]=pages[sid]||[]).push(Number(pid))});
@@ -831,11 +852,11 @@ async function repost(w,failing){
     return;
   }
   try{
-    const text=await recoverCaption(w);
-    const r=await createPostTo(pages,text,w.media,{now:true});
+    const rp=await buildRepost(w,pages);
+    const r=await createRepost(pages,rp,w.media);
     failing.forEach(k=>w.st[k]='retried');
-    w.note='перевыложено ('+(w.attempt+1)+')';
-    registerWatch(w.label.replace(/ \(повтор\)$/,'')+' (повтор)',pages,r&&r.id,{now:true},text,w.media,w.attempt+1,w.proj);
+    w.note='перевыложено ('+(w.attempt+1)+') с подписью и тегами';
+    registerWatch(w.label.replace(/ \(повтор\)$/,'')+' (повтор)',pages,r&&r.id,{now:true},html2txt(rp.texts[0].text),w.media,w.attempt+1,w.proj);
   }catch(e){
     if(e.status===401)throw e;
     w.state='alarm';failing.forEach(k=>w.st[k]='dead');
@@ -855,13 +876,16 @@ async function checkWatch(w,final){
     for(const pid of w.pages[sid]){
       const key=sid+':'+pid;
       if(['retried','dead'].includes(w.st[key]))continue;
-      if(links[pid]||planned[pid]){w.st[key]='ok';w.fail[key]=0;continue}
+      if(links[pid]||planned[pid]){
+        w.st[key]='ok';w.fail[key]=0;
+        if(/vk\.(com|ru)\/wall-/.test(String(links[pid]||''))&&!w.wallHit){w.wallHit=true;w.note='ВК вышло на СТЕНУ, а не в клипы';alarm('«'+w.label+'»: ВК опубликовал на стену, а не в клипы — удали пост со стены')}
+        continue}
       const e=errs[pid];
       if(e&&e.length){w.fail[key]=(w.fail[key]||0)+1;w.st[key]='err';w.errText=[].concat(e).join('; ')}
       else w.st[key]='pend';
     }
   }
-  const failing=Object.keys(w.st).filter(k=>w.st[k]==='err'&&((w.fail[k]||0)>=2||final));
+  const failing=Object.keys(w.st).filter(k=>w.st[k]==='err'&&((w.fail[k]||0)>=3||(final&&(w.fail[k]||0)>=2)));
   if(failing.length)await repost(w,failing);
   if(w.state!=='watch')return;
   const vals=Object.values(w.st);
