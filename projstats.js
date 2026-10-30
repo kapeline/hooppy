@@ -206,7 +206,7 @@ if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else 
 })();
 
 (function () {
-  if (typeof window.updateCont !== 'function' || typeof window.cur !== 'function') return;
+  if (typeof window.updateCont !== 'function' || typeof cur !== 'function') return;
   var origUC = window.updateCont, busyLW = {}, doneLW = {};
   async function sync(p) {
     var pid = Number(p.hooppyId || p.id);
@@ -233,7 +233,7 @@ if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else 
   }
   window.updateCont = function () {
     var p = null;
-    try { p = window.cur(); } catch (e) {}
+    try { p = cur(); } catch (e) {}
     if (p) {
       var pid = Number(p.hooppyId || p.id);
       if (pid && (!doneLW[pid] || Date.now() - doneLW[pid] > 60000)) sync(p);
