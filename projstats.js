@@ -204,3 +204,41 @@ if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else 
     } catch (err) { if (err && err.status === 401) throw err; }
   };
 })();
+
+(function () {
+  if (typeof window.updateCont !== 'function' || typeof window.cur !== 'function') return;
+  var origUC = window.updateCont, busyLW = {}, doneLW = {};
+  async function sync(p) {
+    var pid = Number(p.hooppyId || p.id);
+    if (!pid || busyLW[pid]) return;
+    busyLW[pid] = true;
+    try {
+      var best = 0;
+      for (var page = 1; page <= 5; page++) {
+        var r = await api('/posts?limit=100&page=' + page);
+        (r.list || []).forEach(function (x) {
+          var inP = (x.post_projects || []).some(function (q) { return Number(q.id) === pid; });
+          var t = x.publication_date && Number(x.publication_date.source_timestamp) * 1000;
+          if (inP && t && t > best) best = t;
+        });
+        if (!r.is_has_more) break;
+      }
+      if (best && best > (p.lastWhen || 0)) {
+        p.lastWhen = best;
+        try { store.set('projects', projects); } catch (e) {}
+      }
+      doneLW[pid] = Date.now();
+    } catch (e) {} finally { busyLW[pid] = false; }
+    try { origUC(); } catch (e) {}
+  }
+  window.updateCont = function () {
+    var p = null;
+    try { p = window.cur(); } catch (e) {}
+    if (p) {
+      var pid = Number(p.hooppyId || p.id);
+      if (pid && (!doneLW[pid] || Date.now() - doneLW[pid] > 60000)) sync(p);
+    }
+    return origUC.apply(this, arguments);
+  };
+  try { window.updateCont(); } catch (e) {}
+})();
