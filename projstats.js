@@ -157,31 +157,50 @@ var sv=lsGet('psSel',null);
 if(sv&&sv.from&&sv.to){$q('#psFrom').value=sv.from;$q('#psTo').value=sv.to}else setRange('7');
 })();
 
-/* Слежка: ручной перенос постов в Хуппи не считается сбоем (2026-10-29) */
-(function(){
-  var orig=window.checkWatch;
-  if(typeof orig!=='function'||orig.__moved)return;
-  function msk(p){var d=String(p.date||'').split('.');if(d.length<3)return NaN;return Date.UTC(+d[2],+d[1]-1,+d[0],+p.hours-3,+p.minutes)}
-  var wrapped=async function(w,final){
-    try{
-      var j=await api('/posts/'+w.postId+'/edit');
-      if(j&&Number(j.publication_when_type)===2&&j.publication_date){
-        var t=msk(j.publication_date);
-        if(isFinite(t)&&Math.abs(t-w.at)>120000&&t>Date.now()){
-          w.at=t;w.k=0;w.st={};w.fail={};w.state='watch';w.note='';
+/* Слежка и ручной перенос: если ты сама передвинула пост в Хуппи на другое время,
+   Заливатор подхватывает новое время и не пищит. Сигнал остаётся только для постов,
+   которые стоят на своём времени и всё равно не вышли. */
+(function () {
+  if (typeof window.checkWatch !== 'function') return;
+  var orig = window.checkWatch;
+  window.checkWatch = async function (w, final) {
+    try {
+      var e = await api('/posts/' + w.postId + '/edit');
+      var d = e && e.publication_date;
+      if (e && Number(e.publication_when_type) === 2 && d && d.date) {
+        var p = String(d.date).split('.');
+        var t = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]), Number(d.hours), Number(d.minutes)).getTime();
+        if (t && Math.abs(t - w.at) > 2 * 60000 && t > Date.now() - 60000) {
+          w.at = t; w.k = 0; w.st = {}; w.fail = {}; w.state = 'watch';
+          w.note = 'время перенесено в Хуппи — слежу по новому';
           return;
         }
       }
-    }catch(e){if(e&&e.status===401)throw e}
-    return orig(w,final);
+    } catch (err) { if (err && err.status === 401) throw err; }
+    return orig(w, final);
   };
-  wrapped.__moved=true;
-  window.checkWatch=wrapped;
-  try{
-    if(!localStorage.getItem('zal_wfix1')){
-      watch.forEach(function(w){if(/не подтвердилась/.test(w.note||'')){w.state='watch';w.note='';w.k=0;w.st={};w.fail={}}});
-      localStorage.setItem('zal_wfix1','1');
-      saveWatch();renderWatch();
-    }
-  }catch(e){}
+  /* уже поднятые сигналы «за час не подтвердилась» перепроверяем: возможно, пост просто перенесли */
+  try {
+    watch.forEach(function (w) {
+      if (w.state === 'alarm' && String(w.note || '').indexOf('не подтвердилась') >= 0) { w.state = 'watch'; w.k = 0; w.st = {}; w.fail = {}; w.note = ''; }
+    });
+    if (typeof saveWatch === 'function') saveWatch();
+    if (typeof renderWatch === 'function') renderWatch();
+  } catch (err) {}
+})();
+
+/* быстрая перевыкладка на постоянные ошибки (не ждать 3 проверки) */
+(function () {
+  if (typeof window.checkWatch !== 'function') return;
+  var prev = window.checkWatch;
+  var PERM = /Too long encoding|storeShort/i;
+  window.checkWatch = async function (w, final) {
+    await prev(w, final);
+    try {
+      if (w.state !== 'watch' || typeof window.repost !== 'function') return;
+      if (!PERM.test(String(w.errText || ''))) return;
+      var failing = Object.keys(w.st).filter(function (k) { return w.st[k] === 'err' && (w.fail[k] || 0) >= 1; });
+      if (failing.length) await window.repost(w, failing);
+    } catch (err) { if (err && err.status === 401) throw err; }
+  };
 })();
