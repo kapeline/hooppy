@@ -1057,16 +1057,47 @@ async function yPoll(){
     info.textContent='Расширение v'+p.version+' на связи. Яппи-аккаунт этого браузера: '+(yAccName(store.get('yAcc',''))||'НЕ ВЫБРАН')+'. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
     body.innerHTML=jobs.slice(0,40).map(j=>{
       const st=Y_ST[j.state]||[j.state,'#888'];
-      const again=(j.state==='err'||j.state==='check')?' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">ещё раз</button>':'';
+      const again=(j.state==='err'||j.state==='check'||j.state==='ok'||j.state==='dry')?' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">'+(yNeedFile.has(j.id)?'выбрать файл и отправить':(j.state==='ok'||j.state==='dry'?'выложить заново':'ещё раз'))+'</button>':'';
       return '<tr><td>'+yEsc(j.name)+'</td><td>'+fmt(new Date(j.when))+'</td><td><span style="background:'+st[1]+';color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">'+st[0]+'</span>'+(j.err?'<div class="hint">'+yEsc(j.err)+'</div>':'')+again+'</td></tr>';
     }).join('');
     document.title=(cnt.err||cnt.check?'⚠ ':'')+document.title.replace(/^⚠ /,'');
   }finally{yPolling=false}
 }
+const yNeedFile=new Set();
+function yPickAndSend(j){
+  const inp=document.createElement('input');inp.type='file';inp.accept='video/*,.mp4,.mov';
+  inp.onchange=async()=>{
+    const f=inp.files[0];if(!f)return;
+    try{
+      await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:j.name,when:Date.now(),caption:j.caption||'',file:f},30*60000);
+      yNeedFile.delete(j.id);
+    }catch(x){alert('Не отправилось в Яппи: '+x.message)}
+    yPoll();
+  };
+  inp.click();
+}
 document.addEventListener('click',async e=>{
   const b=e.target.closest('.yRetry');if(!b)return;
-  if(b.dataset.st==='check'&&!confirm('Если ролик уже вышел в Яппи, будет дубль. Повторить?'))return;
-  try{await yappyBridge({type:'retry',id:b.dataset.id},4000)}catch(x){}
+  const id=b.dataset.id,st=b.dataset.st;
+  const acc=yAccName(store.get('yAcc',''))||'НЕ ВЫБРАН';
+  async function getJob(){try{const l=await yappyBridge({type:'list'},5000);return (l.jobs||[]).find(x=>x.id===id)||null}catch(x){return null}}
+  if(yNeedFile.has(id)){
+    const j=await getJob();if(!j){yPoll();return}
+    if(!confirm('Отправить «'+j.name+'» в Яппи заново сейчас, с той же подписью? Аккаунт Яппи в этом браузере: '+acc+'. Если ролик уже есть в Яппи, будет дубль.'))return;
+    yPickAndSend(j);return;
+  }
+  if(st==='check'&&!confirm('Если ролик уже вышел в Яппи, будет дубль. Повторить?'))return;
+  if((st==='ok'||st==='dry')&&!confirm('Расширение считает, что ролик уже выложен. Если он правда есть в Яппи, получится дубль. Выложить заново в аккаунт «'+acc+'»?'))return;
+  b.disabled=true;
+  try{await yappyBridge({type:'retry',id},4000)}catch(x){}
+  if(st==='ok'||st==='dry'){
+    await new Promise(r=>setTimeout(r,2000));
+    const j=await getJob();
+    if(j&&(j.state==='ok'||j.state==='dry')){
+      yNeedFile.add(id);
+      alert('Расширение не смогло перезапустить этот ролик сам (файла у него уже нет). Нажми на кнопку «выбрать файл и отправить» у этой строки и выбери этот же ролик с компьютера.');
+    }
+  }
   yPoll();
 });
 {const sel=$('#yAccSel');sel.innerHTML='<option value="">— выбери —</option>'+Y_ACCS.map(a=>'<option value="'+a[0]+'">'+a[1]+'</option>').join('');sel.value=store.get('yAcc','');sel.onchange=()=>{store.set('yAcc',sel.value);yPoll()}}
