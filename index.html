@@ -1057,19 +1057,40 @@ async function yPoll(){
     info.textContent='Расширение v'+p.version+' на связи. Яппи-аккаунт этого браузера: '+(yAccName(store.get('yAcc',''))||'НЕ ВЫБРАН')+'. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
     body.innerHTML=jobs.slice(0,40).map(j=>{
       const st=Y_ST[j.state]||[j.state,'#888'];
-      const again=(j.state==='err'||j.state==='check'||j.state==='ok'||j.state==='dry')?' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">'+(yNeedFile.has(j.id)?'выбрать файл и отправить':(j.state==='ok'||j.state==='dry'?'выложить заново':'ещё раз'))+'</button>':'';
+      const again=' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">'+(yNeedFile.has(j.id)?'выбрать файл и отправить':(j.state==='ok'||j.state==='dry'?'выложить заново':(j.state==='err'||j.state==='check'?'ещё раз':'проверить и выложить')))+'</button>';
       return '<tr><td>'+yEsc(j.name)+'</td><td>'+fmt(new Date(j.when))+'</td><td><span style="background:'+st[1]+';color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">'+st[0]+'</span>'+(j.err?'<div class="hint">'+yEsc(j.err)+'</div>':'')+again+'</td></tr>';
     }).join('');
     document.title=(cnt.err||cnt.check?'⚠ ':'')+document.title.replace(/^⚠ /,'');
   }finally{yPolling=false}
 }
 const yNeedFile=new Set();
-function yPickAndSend(j){
+/* проект и подпись для ролика из очереди Яппи: берём из слежки (там лежит исходная подпись) */
+function yJobCtx(j){
+  const w=watch.find(x=>x.label===j.name&&x.caption);
+  const p=(w&&projects.find(x=>x.name===w.proj))||cur();
+  const caption=j.caption||(w?yCaption(w.caption,p.yTags):'');
+  return {p,caption,hasCap:!!caption};
+}
+function yPickAndSend(j,replace){
+  const ctx=yJobCtx(j);
   const inp=document.createElement('input');inp.type='file';inp.accept='video/*,.mp4,.mov';
   inp.onchange=async()=>{
     const f=inp.files[0];if(!f)return;
+    if(f.name.replace(/\.[^.]+$/,'').toLowerCase()!==j.name.replace(/\.[^.]+$/,'').toLowerCase()&&!confirm('Выбран файл «'+f.name+'», а в очереди «'+j.name+'». Всё равно отправить?'))return;
+    const t0=Date.now();
+    const mk=id=>({type:'add',id,name:j.name,when:Date.now(),caption:ctx.caption,file:f});
     try{
-      await yappyBridge({type:'add',id:'y'+Date.now()+Math.random().toString(36).slice(2,6),name:j.name,when:Date.now(),caption:j.caption||'',file:f},30*60000);
+      if(replace){
+        // пробуем занять место зависшей задачи (тот же id), чтобы не осталось дубля в очереди
+        let replaced=false;
+        try{
+          await yappyBridge(mk(j.id),30*60000);
+          const l=await yappyBridge({type:'list'},5000);
+          const n=(l.jobs||[]).find(x=>x.id===j.id);
+          replaced=!!(n&&n.when>=t0-5000);
+        }catch(x){}
+        if(!replaced)await yappyBridge(mk('y'+Date.now()+Math.random().toString(36).slice(2,6)),30*60000);
+      }else await yappyBridge(mk('y'+Date.now()+Math.random().toString(36).slice(2,6)),30*60000);
       yNeedFile.delete(j.id);
     }catch(x){alert('Не отправилось в Яппи: '+x.message)}
     yPoll();
@@ -1085,6 +1106,15 @@ document.addEventListener('click',async e=>{
     const j=await getJob();if(!j){yPoll();return}
     if(!confirm('Отправить «'+j.name+'» в Яппи заново сейчас, с той же подписью? Аккаунт Яппи в этом браузере: '+acc+'. Если ролик уже есть в Яппи, будет дубль.'))return;
     yPickAndSend(j);return;
+  }
+  if(st==='wait'||st==='recv'||st==='run'){
+    const j=await getJob();if(!j){yPoll();return}
+    const ctx=yJobCtx(j);
+    {const bad=yAccBlock(ctx.p);if(bad){alert(bad);return}}
+    const late=Math.round((Date.now()-j.when)/60000);
+    if(!confirm('«'+j.name+'»: расширение держит его в очереди ('+(late>0?'опоздал на '+late+' мин':'время ещё не пришло')+').\n\nСам сайт не видит, есть ли ролик в Яппи, — открой аккаунт «'+acc+'» и проверь.\n• Ролика там нет → ОК, выбери файл, он уйдёт сразу'+(ctx.hasCap?' (подпись и хештеги подставлю)':' (подписи в данных нет — уйдёт без подписи)')+'.\n• Ролик уже там → Отмена.'))return;
+    yPickAndSend(j,true);   // расширение само повтор для «ждёт» блокирует, поэтому сразу берём файл
+    return;
   }
   if(st==='check'&&!confirm('Если ролик уже вышел в Яппи, будет дубль. Повторить?'))return;
   if((st==='ok'||st==='dry')&&!confirm('Расширение считает, что ролик уже выложен. Если он правда есть в Яппи, получится дубль. Выложить заново в аккаунт «'+acc+'»?'))return;
