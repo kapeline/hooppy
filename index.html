@@ -1058,17 +1058,19 @@ async function yPoll(){
     try{l=await yappyBridge({type:'list'},5000)}
     catch(e){info.textContent='Расширение старое'+(p.version?' (v'+p.version+')':'')+': статусы не видно. Поставь версию 1.2.0 (chrome://extensions → обновить).';body.innerHTML='';return}
     const jobs=(l.jobs||[]).sort((a,b)=>b.when-a.when);
-    const cnt={};jobs.forEach(j=>{cnt[j.state]=(cnt[j.state]||0)+1});
+    const cnt={};jobs.forEach(j=>{const k=(yAck.has(j.id)&&(j.state==='check'||j.state==='err'))?'ok':j.state;cnt[k]=(cnt[k]||0)+1});
     info.textContent='Расширение v'+p.version+' на связи. Яппи-аккаунт этого браузера: '+(yAccName(store.get('yAcc',''))||'НЕ ВЫБРАН')+'. '+(jobs.length?Object.keys(cnt).map(k=>(Y_ST[k]?Y_ST[k][0]:k)+': '+cnt[k]).join(' · ')+'. ':'Очередь пуста. ')+'Chrome должен быть открыт в моменты выкладки.';
     body.innerHTML=jobs.slice(0,40).map(j=>{
-      const st=Y_ST[j.state]||[j.state,'#888'];
+      const acked=yAck.has(j.id)&&(j.state==='check'||j.state==='err'||j.state==='wait');
+      const st=acked?['вышло (ты подтвердила)','#2fa863']:(Y_ST[j.state]||[j.state,'#888']);
       const again=' <button class="ghost yRetry" data-id="'+yEsc(j.id)+'" data-st="'+j.state+'">'+(yNeedFile.has(j.id)?'выбрать файл и отправить':(j.state==='ok'||j.state==='dry'?'выложить заново':(j.state==='err'||j.state==='check'?'ещё раз':'проверить и выложить')))+'</button>';
-      return '<tr><td>'+yEsc(j.name)+'</td><td>'+fmt(new Date(j.when))+'</td><td><span style="background:'+st[1]+';color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">'+st[0]+'</span>'+(j.err?'<div class="hint">'+yEsc(j.err)+'</div>':'')+again+'</td></tr>';
+      return '<tr><td>'+yEsc(j.name)+'</td><td>'+fmt(new Date(j.when))+'</td><td><span style="background:'+st[1]+';color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">'+st[0]+'</span>'+(j.err&&!acked?'<div class="hint">'+yEsc(j.err)+'</div>':'')+(!acked&&(j.state==='check'||j.state==='err')?' <button class="ghost yOk" data-id="'+yEsc(j.id)+'">всё ок, вышло</button>':'')+again+'</td></tr>';
     }).join('');
     document.title=(cnt.err||cnt.check?'⚠ ':'')+document.title.replace(/^⚠ /,'');
   }finally{yPolling=false}
 }
 const yNeedFile=new Set();
+const yAck=new Set(store.get('yAck',[]));const yAckSave=()=>store.set('yAck',[...yAck].slice(-300));
 /* проект и подпись для ролика из очереди Яппи: берём из слежки (там лежит исходная подпись) */
 function yJobCtx(j){
   const w=watch.find(x=>x.label===j.name&&x.caption);
@@ -1102,6 +1104,10 @@ function yPickAndSend(j,replace){
   };
   inp.click();
 }
+document.addEventListener('click',e=>{
+  const o=e.target.closest('.yOk');if(!o)return;
+  yAck.add(o.dataset.id);yAckSave();yPoll();
+});
 document.addEventListener('click',async e=>{
   const b=e.target.closest('.yRetry');if(!b)return;
   const id=b.dataset.id,st=b.dataset.st;
@@ -1156,8 +1162,8 @@ $('#yCheck').onclick=async()=>{
     if(!mine)bad.push('Не выбран Яппи-аккаунт этого браузера (список выше).');
     else ok.push('Аккаунт этого браузера: '+yAccName(mine)+'.');
     const now=Date.now(),jobs=l.jobs||[];
-    const late=jobs.filter(j=>j.state==='wait'&&now-j.when>10*60000);
-    const errs=jobs.filter(j=>j.state==='err'||j.state==='check');
+    const late=jobs.filter(j=>j.state==='wait'&&now-j.when>10*60000&&!yAck.has(j.id));
+    const errs=jobs.filter(j=>(j.state==='err'||j.state==='check')&&!yAck.has(j.id));
     const wait=jobs.filter(j=>j.state==='wait'&&now-j.when<=10*60000);
     late.forEach(j=>bad.push('«'+j.name+'» просрочен на '+Math.round((now-j.when)/60000)+' мин и всё ещё «ждёт» — Chrome был закрыт? Нажми «проверить и выложить» у этой строки.'));
     errs.forEach(j=>bad.push('«'+j.name+'»: '+(j.err||'ошибка')+' — открой Яппи и посмотри, вышел ли ролик (ссылка выше).'));
