@@ -110,6 +110,11 @@ th{color:var(--muted);font-weight:500;font-size:12px}
       <h2>Яппи: что выложено</h2>
       <div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="hint">В Яппи в этом браузере открыт аккаунт:</span><select id="yAccSel"></select></div>
       <div class="hint" id="yInfo">Проверяю расширение…</div>
+      <div class="row" style="gap:8px;align-items:center;margin:8px 0">
+        <button class="ghost" id="yCheck">Проверить Яппи</button>
+        <a class="hint" href="https://yappy.media/" target="_blank" rel="noopener">открыть Яппи, посмотреть профиль самой</a>
+      </div>
+      <div id="yCheckOut" style="display:none;margin-bottom:10px;padding:8px 10px;border-radius:8px;font-size:13px;line-height:1.5"></div>
       <table>
         <thead><tr><th>Видео</th><th>Когда</th><th>Статус</th></tr></thead>
         <tbody id="yRows"></tbody>
@@ -1130,6 +1135,38 @@ document.addEventListener('click',async e=>{
   }
   yPoll();
 });
+/* «Проверить Яппи»: всё ли в порядке на стороне расширения и очереди (саму страницу Яппи сайт читать не может) */
+$('#yCheck').onclick=async()=>{
+  const out=$('#yCheckOut'),btn=$('#yCheck');
+  const show=(bad,lines)=>{
+    out.style.display='block';
+    out.style.background=bad?'#fdeceb':'#e8f6ee';out.style.border='1px solid '+(bad?'#d6393f':'#2fa863');
+    out.innerHTML='<b>'+(bad?'Есть что проверить':'Всё в порядке')+'</b> · '+new Date().toLocaleTimeString('ru-RU').slice(0,5)+'<br>'+lines.map(yEsc).join('<br>');
+  };
+  btn.disabled=true;
+  try{
+    const bad=[],ok=[];
+    let p,l;
+    try{p=await yappyBridge({type:'ping'},1500)}
+    catch(e){show(true,['Расширение «Заливатор → Яппи» не отвечает. Обнови страницу (Ctrl+Shift+R); если не помогло — проверь, что оно включено в chrome://extensions.']);return}
+    ok.push('Расширение v'+p.version+' на связи.');
+    try{l=await yappyBridge({type:'list'},5000)}
+    catch(e){show(true,ok.concat(['Расширение не отдаёт очередь (старая версия?).']));return}
+    const mine=store.get('yAcc','');
+    if(!mine)bad.push('Не выбран Яппи-аккаунт этого браузера (список выше).');
+    else ok.push('Аккаунт этого браузера: '+yAccName(mine)+'.');
+    const now=Date.now(),jobs=l.jobs||[];
+    const late=jobs.filter(j=>j.state==='wait'&&now-j.when>10*60000);
+    const errs=jobs.filter(j=>j.state==='err'||j.state==='check');
+    const wait=jobs.filter(j=>j.state==='wait'&&now-j.when<=10*60000);
+    late.forEach(j=>bad.push('«'+j.name+'» просрочен на '+Math.round((now-j.when)/60000)+' мин и всё ещё «ждёт» — Chrome был закрыт? Нажми «проверить и выложить» у этой строки.'));
+    errs.forEach(j=>bad.push('«'+j.name+'»: '+(j.err||'ошибка')+' — открой Яппи и посмотри, вышел ли ролик (ссылка выше).'));
+    const next=jobs.filter(j=>j.state==='wait'&&j.when>now).sort((a,b)=>a.when-b.when)[0];
+    ok.push('В очереди: '+jobs.filter(j=>j.state==='wait').length+' ждут'+(next?', ближайший «'+next.name+'» — '+fmt(new Date(next.when)):'')+'.');
+    bad.length?show(true,bad.concat(ok)):show(false,ok);
+  }catch(e){show(true,['Проверка упала: '+e.message])}
+  finally{btn.disabled=false}
+};
 {const sel=$('#yAccSel');sel.innerHTML='<option value="">— выбери —</option>'+Y_ACCS.map(a=>'<option value="'+a[0]+'">'+a[1]+'</option>').join('');sel.value=store.get('yAcc','');sel.onchange=()=>{store.set('yAcc',sel.value);yPoll()}}
 setTimeout(yPoll,1000);setInterval(yPoll,8000);
 </script>
