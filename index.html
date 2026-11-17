@@ -829,7 +829,7 @@ async function recoverCaption(w){
 }
 /* Перевыкладка упавшей сети: копия ИСХОДНОГО поста (подпись + теги + настройки «Клипы/Reels/Shorts»),
    только на упавшие страницы. На стену ВК и без тегов не публикуем никогда. */
-const BUILD='2026-10-29b';
+const BUILD='2026-11-17a';
 const VK_SIDS=[1,12];
 async function buildRepost(w,pages){
   const j=await api('/posts/'+w.postId+'/edit');
@@ -882,7 +882,12 @@ async function repost(w,failing){
     w.note='не смог перевыложить: '+e.message;alarm('«'+w.label+'»: не смог перевыложить ('+e.message+')');
   }
 }
-async function checkWatch(w,final){
+/* Ошибки, на которые перевыкладка не поможет или навредит */
+const NO_REPOST=[
+  {re:/banned from making posts/i,why:'аккаунт TikTok заблокирован на публикации — перевыкладка не поможет, проверь аккаунт'},
+  {re:/Too long encoding/i,why:'ВК долго обрабатывал клип — обычно он выходит сам; не перевыкладываю, чтобы не было дубля. Проверь клипы сообщества'}
+];
+async function checkWatch(w,final,late){
   for(const sid of Object.keys(w.pages)){
     let j;
     try{j=await api('/items/social/pages?items_type=posts&item_id='+w.postId+'&source_id='+sid)}
@@ -900,11 +905,20 @@ async function checkWatch(w,final){
         if(/vk\.(com|ru)\/wall-/.test(String(links[pid]||''))&&!w.wallHit){w.wallHit=true;w.note='ВК вышло на СТЕНУ, а не в клипы';alarm('«'+w.label+'»: ВК опубликовал на стену, а не в клипы — удали пост со стены')}
         continue}
       const e=errs[pid];
-      if(e&&e.length){w.fail[key]=(w.fail[key]||0)+1;w.st[key]='err';w.errText=[].concat(e).join('; ')}
+      if(e&&e.length){w.fail[key]=(w.fail[key]||0)+1;w.st[key]='err';w.errText=[].concat(e).join('; ');(w.errBy=w.errBy||{})[key]=w.errText}
       else w.st[key]='pend';
     }
   }
-  const failing=Object.keys(w.st).filter(k=>w.st[k]==='err'&&((w.fail[k]||0)>=3||(final&&(w.fail[k]||0)>=2)));
+  /* late — сайт был закрыт и проверка случилась уже после часа: ошибка висит давно, одного раза достаточно */
+  let failing=Object.keys(w.st).filter(k=>w.st[k]==='err'&&((w.fail[k]||0)>=3||(final&&(w.fail[k]||0)>=2)||(late&&(w.fail[k]||0)>=1)));
+  const nrOf=k=>NO_REPOST.find(x=>x.re.test(((w.errBy||{})[k])||w.errText||''));
+  const stop=failing.filter(nrOf);
+  if(stop.length){
+    stop.forEach(k=>w.st[k]='dead');
+    const why=[...new Set(stop.map(k=>nrOf(k).why))].join(' · ');
+    w.state='alarm';w.note=why;alarm('«'+w.label+'»: '+why);
+    failing=failing.filter(k=>!stop.includes(k));
+  }
   if(failing.length)await repost(w,failing);
   if(w.state!=='watch')return;
   const vals=Object.values(w.st);
@@ -932,8 +946,9 @@ async function tick(){
       if(w.state!=='watch')continue;
       const now=Date.now(),lastIdx=WATCH_OFFS.length-1;
       if(now<w.at+WATCH_OFFS[Math.min(w.k,lastIdx)]*60000)continue;
-      const final=w.k>=lastIdx||now>w.at+(WATCH_OFFS[lastIdx]+1)*60000;
-      await checkWatch(w,final);
+      const late=now>w.at+(WATCH_OFFS[lastIdx]+1)*60000;
+      const final=w.k>=lastIdx||late;
+      await checkWatch(w,final,late);
       w.k++;
       saveWatch();renderWatch();
     }
