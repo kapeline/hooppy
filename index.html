@@ -829,7 +829,7 @@ async function recoverCaption(w){
 }
 /* Перевыкладка упавшей сети: копия ИСХОДНОГО поста (подпись + теги + настройки «Клипы/Reels/Shorts»),
    только на упавшие страницы. На стену ВК и без тегов не публикуем никогда. */
-const BUILD='2026-11-17a';
+const BUILD='2026-11-17b';
 const VK_SIDS=[1,12];
 async function buildRepost(w,pages){
   const j=await api('/posts/'+w.postId+'/edit');
@@ -883,10 +883,7 @@ async function repost(w,failing){
   }
 }
 /* Ошибки, на которые перевыкладка не поможет или навредит */
-const NO_REPOST=[
-  {re:/banned from making posts/i,why:'аккаунт TikTok заблокирован на публикации — перевыкладка не поможет, проверь аккаунт'},
-  {re:/Too long encoding/i,why:'ВК долго обрабатывал клип — обычно он выходит сам; не перевыкладываю, чтобы не было дубля. Проверь клипы сообщества'}
-];
+const NO_REPOST=[]; // Оля: перевыкладывать в любом случае
 async function checkWatch(w,final,late){
   for(const sid of Object.keys(w.pages)){
     let j;
